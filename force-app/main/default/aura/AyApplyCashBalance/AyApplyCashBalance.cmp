@@ -1,0 +1,12 @@
+<aura:component controller="AyApplyCashBalanceController" implements="force:hasRecordId,force:lightningQuickAction" access="global">    
+    
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}"/> 
+
+    <div class="slds-align_absolute-center">
+        <div class="slds-grid slds-gutters slds-align_absolute-center slds-m-top_large" style="position:relative;height:100px;">
+            <div class="slds-col slds-size_1-of-1">
+                <lightning:spinner size="medium" variant="brand"/>
+            </div>
+        </div>	
+    </div>
+</aura:component>

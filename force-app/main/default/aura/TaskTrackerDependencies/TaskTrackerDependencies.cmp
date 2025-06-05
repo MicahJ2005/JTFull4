@@ -1,0 +1,38 @@
+<!--
+  @File Name          : TaskTrackerDependencies.cmp
+  @Description        :
+  @Author             : Revolution Group (Brian Ezell)
+  @Group              :
+  @Last Modified By   : Revolution Group (Brian Ezell)
+  @Last Modified On   : 5/13/2020, 2:45:19 PM
+  @Modification Log   :
+  Ver       Date            Author      		    Modification
+  1.0    2/4/2020   Revolution Group (Brian Ezell)     Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId" access="global" controller="TaskTrackerDependenciesController">
+    <aura:handler name="init" value="{!this}" action="{! c.doInit }" />
+
+    <aura:attribute name="OtherSteps" type="List" default="[]" />
+    <aura:attribute name="CurrentlyDependsOnSteps" type="List" default="[]" />
+    <aura:attribute name="Templates" type="List" />
+    <aura:attribute name="SelectedTemplate" type="String" />
+
+    <div class="slds-clearfix slds-card forceDetailPanelDesktop" >
+
+      <lightning:select name="TemplateSelect" aura:id="TemplateSelect" label="Template" value="{! v.SelectedTemplate }" onchange="{! c.handleTemplateSelectionChange }">
+        <aura:iteration items="{! v.Templates }" var="temp">
+          <option value="{! temp.Id }" text="{! temp.Name }" selected="{! v.SelectedTemplate == temp.Id }"></option>
+        </aura:iteration>
+      </lightning:select>
+
+        <lightning:dualListbox name="lstboxDependencies"
+            label="Select Dependencies"
+            sourceLabel="Available Steps"
+            selectedLabel="Complete These First"
+            fieldLevelHelp="What this step needs done before"
+            options="{! v.OtherSteps }"
+            value="{! v.CurrentlyDependsOnSteps }"
+            onchange="{! c.handleDependencyChange }"
+             />
+    </div>
+</aura:component>

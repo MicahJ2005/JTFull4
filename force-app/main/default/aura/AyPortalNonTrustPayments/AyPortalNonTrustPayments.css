@@ -1,0 +1,10 @@
+.THIS {
+}
+.THIS.cardBorder{
+    border: 2px solid rgb(0, 95, 134);
+} 
+.THIS .slds-card__header{
+    background-color: rgb(0, 95, 134);
+    color: white;
+    padding-bottom: 10px;
+}

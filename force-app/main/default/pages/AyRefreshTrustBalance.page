@@ -1,0 +1,15 @@
+<apex:page standardController="Trust_Balance__c" extensions="AyRefreshTrustBalanceExt" lightningStylesheets="true">
+    <apex:pagemessage rendered="{!displayMsg}" severity="info" summary="A Batch job has been scheduled. Please wait for a few minutes.">
+    
+    </apex:pagemessage>    
+    <apex:form >
+        <apex:pageBlock >
+            <apex:pageblockButtons location="Bottom">
+                <center>
+                    <apex:commandButton value="Go Back" action="{!goBack}"/>
+                    <apex:commandButton value="Click here to Refresh Statements" action="{!refreshStatements}"/>
+                </center>
+            </apex:pageblockButtons>
+        </apex:pageBlock>
+    </apex:form>
+</apex:page>

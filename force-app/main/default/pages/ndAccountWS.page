@@ -1,0 +1,5 @@
+<apex:page standardController="AcctSeed__Project__c" title="NetDocuments workspace corresponding to an
+Matter">
+<apex:iframe scrolling="true" title="Account Workspace" height="750px" width="100%"
+src="https://vault.netvoyage.com/neWeb2/goID.aspx?sfSession={!$Api.Session_ID}&sfUrl={!$Api.Partner_Server_URL_550}&smallDisplay=Y&ws={!URLENCODE(AcctSeed__Project__c.Id)}&wsParent={!URLENCODE(AcctSeed__Project__c.AcctSeed__Account__c)}&cabinet=NG-6C4J6N0J"/>
+</apex:page>

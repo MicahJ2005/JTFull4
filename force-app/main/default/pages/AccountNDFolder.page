@@ -1,0 +1,1 @@
+<apex:page standardController="Account" title="Folderassociated with an account"><apex:iframe scrolling="true" title="Related Documents" src="https://vault.netvoyage.com/neWeb2/searchEntry.aspx?sfSession={!$Api.Session_ID}&sfUrl={!$Api.Partner_Server_URL_70}&criteria=%3d3(%22{!URLENCODE(account.name)}%22)+%3d11(ndfld)&smallDisplay=Y&goSingle=folder"/></apex:page>

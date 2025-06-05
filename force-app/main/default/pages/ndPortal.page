@@ -1,0 +1,3 @@
+<apex:page standardController="AcctSeed__Project__c" title="CollabSpaces associated with a Matter">
+<apex:iframe scrolling="true" title="Related Documents" height="750px" width="100%" src="https://vault.netvoyage.com/neWeb2/searchEntry.aspx?sfSession={!$Api.Session_ID}&sfUrl={!$Api.Partner_Server_URL_550}&scope=NG-6C4J6N0J&criteria=%3d1001(%7B{!URLENCODE(AcctSeed__Project__c.AcctSeed__Account__r.ND_Client_ID__c)}%7D)+%3d1002(%7B{!URLENCODE(AcctSeed__Project__c.ND_Matter_ID__c)}%7D)+%3D11(ndcs)&smallDisplay=Y&goSingle=folder"/>
+</apex:page>

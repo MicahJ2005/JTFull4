@@ -1,0 +1,12 @@
+<apex:page standardController="Trust_Balance__c" recordSetVar="tbal" extensions="AyMassEmailTrustBalanceCon" lightningStylesheets="ture" sidebar="false" showHeader="false" docType="HTML-5.0">
+    <apex:form >
+        <apex:pageBlock >
+            <center>
+                <apex:pageMessage severity="Info" rendered="{!IF(AND(selectedRecordsCount > 0, !displaySuccessMsg), true, false)}" summary="{!selectedRecordsCount} records selected. Please confirm to send emails to selected records."/>
+                <apex:pageMessage severity="Info" rendered="{!displaySuccessMsg}" summary="A job has been scheduled to send emails to selected records. You'll receive an email when the process is completed."/>
+                <apex:commandButton rendered="{! !displaySuccessMsg}" action="{!processSelectedRecords}" value="Send Emails" />
+                <apex:commandButton action="{!cancel}" value="Go Back" />
+            </center>
+        </apex:pageBlock>
+    </apex:form>
+</apex:page>

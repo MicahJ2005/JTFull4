@@ -1,0 +1,13 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 12-22-2020
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   12-07-2020   Revolution Group (Brian Ezell)   Initial Version
+-->
+<apex:page extensions="ScheduleAppointmentController" action="{!redirectToSchedule}" standardController="AcctSeed__Project__c">
+  <apex:pageMessages ></apex:pageMessages>
+</apex:page>

@@ -1,0 +1,13 @@
+<apex:page standardController="Trust_Balance__c" recordSetVar="tbal" extensions="AySendAccountStatementCtrl" lightningStylesheets="true">
+    
+    <apex:form >
+        
+        <apex:pageMessage severity="Info" rendered="{!IF(AND(selectedRecordsCount > 0, !displaySuccessMsg), true, false)}" summary="{!selectedRecordsCount} record(s) selected. Please confirm to send emails to selected records."/>
+        <apex:pageMessage severity="Confirm" rendered="{!displaySuccessMsg}" summary="Email has been sent to the selected records."/>
+        <br/>
+        <center>
+            <apex:commandButton style="background-color:#0057B8; color:white" rendered="{! !displaySuccessMsg}" action="{!proceedToSend}" value="Send Email" />
+            <apex:commandButton action="{!back}" value="Go Back" />
+        </center>
+    </apex:form> 
+</apex:page>

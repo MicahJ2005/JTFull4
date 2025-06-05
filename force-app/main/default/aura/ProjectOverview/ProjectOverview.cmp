@@ -1,0 +1,41 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 10-12-2020
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   10-09-2020   Revolution Group (Brian Ezell)   Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId" access="global" controller="ProjectOverviewController">
+
+    <aura:attribute name="gridTitle" type="String" default="Roles And Hours"/>
+    <aura:attribute name="columns" type="List" access="PRIVATE" />
+    <aura:attribute name="gridData" type="Object" />
+    <aura:attribute name="isLoading" type="Boolean" default="false" />
+
+    <aura:handler name="init" value="{! this }" action="{! c.doInit }" />
+    <aura:attribute name="topLevelParentId" type="String" default="" />
+
+    <aura:handler event="force:showToast" action="{!c.refreshTree}"/>
+
+    <lightning:card>
+      <aura:set attribute="title">
+        <lightning:icon iconName="custom:custom19" />
+        {! v.gridTitle }
+      </aura:set>
+        <div>
+          <lightning:treeGrid
+            aura:id="project-grid"
+            columns="{! v.columns }"
+            data="{! v.gridData }"
+            keyField="Id"
+            isLoading="{! v.isLoading }"
+            onrowaction="{! c.handleRowAction }"
+            >
+          </lightning:treeGrid>
+        </div>
+  </lightning:card>
+
+</aura:component>

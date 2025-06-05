@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApexPage xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>48.0</apiVersion>
+    <availableInTouch>false</availableInTouch>
+    <confirmationTokenRequired>false</confirmationTokenRequired>
+    <description>Experlogix Smart Flows redirect page for redirecting to the Smart Flows execution panel</description>
+    <label>Smart Flows list page for Order</label>
+</ApexPage>

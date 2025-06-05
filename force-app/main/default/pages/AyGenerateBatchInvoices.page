@@ -1,0 +1,20 @@
+<apex:page controller="AyGenerateBatchInvoicesCon" lightningStylesheets="true" sidebar="false" showHeader="false" id="pg">
+    <apex:form id="frm">
+        <apex:pageMessage severity="info" summary="A job has been scheduled. You'll receive an email when the job is completed." rendered="{!displayMessage}" />
+        <apex:pageBlock id="pb"> <!-- rendered="{! !displayMessage}" -->
+            <apex:pageBlockSection title="Batch Generate Invoices" collapsible="false" id="pbs">
+                <apex:inputField label="Select Date" value="{!opp.CloseDate}" required="true" />
+                <apex:inputField label="Select Billing Attorney" value="{!forResourceLookup.accorto__Manager__c}" id="attbtn" />
+            </apex:pageBlockSection>
+
+            <apex:pageBlockButtons location="Bottom">
+                <apex:commandButton value="Generate Invoices" action="{!executeBatch}" />
+            </apex:pageBlockButtons>
+        </apex:pageBlock>
+    </apex:form>
+    <script>
+        window.onload = function(){            
+            var temp = document.getElementById('pg:frm:pb:pbs:attbtn_mlktp').style.display = "none";
+        }
+    </script>
+</apex:page>

@@ -1,0 +1,481 @@
+<apex:page standardController="Trust_Balance__c" recordSetVar="tbal" extensions="AyBatchMonthlyAcctStatementController" lightningStylesheets="ture" sidebar="false" showHeader="false" renderAs="pdf" applyHtmlTag="false" applyBodyTag="false" standardStylesheets="false" docType="HTML-5.0" >
+    <head>
+        <style type="text/css" media="print">
+            @page:first {
+            @bottom-right {
+            content: element(footer);
+            }  
+            }
+            @page {
+            @bottom-right {
+            content: element(footer);
+            }
+            }
+            div.content {
+            position: relative;
+            }
+            div.footer {
+            display: block;
+            font-family:"Arial""Sans-Serif";
+            font-size:13.5px;
+            padding: 5px;
+            position: running(footer);            
+            }
+            .pagenumber:before {
+            content: counter(page);
+            }
+            .pagecount:before {
+            content: counter(pages);
+            }
+            
+            .cls_003 {
+            font-family:"Arial""Sans-Serif";
+            font-size:13.5px;
+            color:rgb(0,0,0);
+            font-weight:normal;
+            font-style:normal;
+            text-decoration:none;
+            }
+            .cls_004 {
+            font-family:"Arial""Sans-Serif";
+            font-size:13.5px;
+            color:rgb(0,0,0);
+            font-weight:bold;
+            font-style:normal;
+            text-decoration:none;
+            }
+            .cls_005 {
+            font-family:"Arial""Sans-Serif";
+            font-size:15.5px;
+            color:rgb(0,0,0);
+            font-weight:normal;
+            font-style:normal;
+            text-decoration:none;
+            } 
+        </style>
+    </head>
+    
+    <apex:variable value="{!1}" var="rowNum"/>
+    
+    <apex:repeat value="{!infoWrapperList}" var="w">
+        <apex:outputPanel rendered="{!IF(rowNum > 1, true, false)}">
+            <div style="page-break-before:always;"/>
+        </apex:outputPanel>
+        
+        <body>
+            <!-- Company Address Details Start -->
+            <table style="width:100%; border-collapse:collapse; text-align:center; margin-bottom:15px;">
+                <tr>
+                    <td>
+                        <img src="{!$Resource.JTL_Logo}" alt="JTL"/>
+                    </td>
+                </tr>                            
+                <tr>
+                    <td class="cls_003">                                    
+                        <apex:outputText value="56 East Broadway Avenue" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="Suite 206" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="Forest Lake, MN 55025" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="(651) 464-7292" />
+                    </td>
+                </tr>
+                <table style="width:100%; text-align:center; margin-bottom:25px;">
+                    <tr>
+                        <td class="cls_003">
+                            <apex:outputText value="Statement as of {!w.statementDate}" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="cls_003">
+                            <apex:outputText value="Statement No: {!w.statementNumber}" />
+                        </td>
+                    </tr>
+                </table>
+            </table>
+            <!-- Company Address Details End -->
+            
+            <!-- Customer Details Start -->
+            <table style="width:100%; border-collapse:collapse; text-align:left; margin-bottom:30px;">
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="{!w.accountName}" rendered="{!!ISBLANK(w.accountName)}" />
+                    </td>
+                </tr>
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="{!w.billingStreet}" rendered="{!!ISBLANK(w.billingStreet)}" /> 
+                    </td>
+                </tr> 
+                <tr>
+                    <td class="cls_003">
+                        <apex:outputText value="{!w.billingCity}" rendered="{!!ISBLANK(w.billingCity)}" />
+                        <apex:outputText value=",&nbsp;" escape="false" rendered="{!!ISBLANK(w.billingCity)}" />
+                        <apex:outputText value="{!w.billingState}" rendered="{!!ISBLANK(w.billingState)}" />&nbsp;
+                        <apex:outputText value="{!w.billingPostalCode}" rendered="{!!ISBLANK(w.billingPostalCode)}" />
+                    </td>
+                </tr>
+                
+                <table style="width:100%; text-align:left; margin-top:15px;">
+                    <tr>
+                        <td class="cls_003">
+                            <apex:outputText styleClass="cls_004" value="Matter:"/>&nbsp;
+                            <apex:outputText value="{!w.matterName}" rendered="{!!ISBLANK(w.matterName)}" />
+                        </td>
+                    </tr>
+                </table>
+            </table>
+            <!-- Customer End Start -->
+            
+            <!-- Billing Line Details Start -->
+            <table width="100%" style="border-collapse:collapse; margin-top:20px; line-height:1.5; table-layout: fixed">
+                <tr>
+                    <th class="cls_004" style="width:61%;">Professional Fees </th>
+                    <th class="cls_003" style="width:13%; text-align:right;">Hours </th>
+                    <th class="cls_003" style="width:13%; text-align:right;">Rate </th>
+                    <th class="cls_003" style="width:13%; text-align:right;"> Amount </th>
+                </tr>
+                <table width="100%" style="border-collapse:collapse; margin-top: 10px; table-layout: fixed;">
+                    <apex:repeat value="{!w.bLineWrapperList}" var="item"> 
+                        <tr>
+                            <td class="cls_003" style="width:12%;">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}" rendered="{!!ISBLANK(item.billdate)}">
+                                    <apex:param value="{! item.billdate}"/>
+                                </apex:outputText>
+                            </td>
+                            <td class="cls_003" style="width:6%;">
+                                <apex:outputText value="{! item.initials}" rendered="{!!ISBLANK(item.initials)}"/>
+                            </td>
+                            <td class="cls_003" style="width:43%; overflow-wrap:break-word; word-wrap:break-all;">
+                                {!SUBSTITUTE(item.description,'\n','\\\n')}
+                            </td>
+                            <td class="cls_003" style="width:13%; text-align:right;">
+                                <apex:outputText value="{!ROUND(item.quantity, 2)}" rendered="{!!ISBLANK(item.quantity)}"/>
+                            </td>
+                            <td class="cls_003" style="width:13%; text-align:right;">
+                                <apex:outputText value="{!ROUND(item.unitPrice, 2)}" rendered="{!!ISBLANK(item.unitPrice)}"/>     
+                            </td>
+                            <td class="cls_003" style="width:13%; text-align:right;">
+                                <apex:outputText value="{0, number, Currency}" rendered="{!!ISBLANK(item.totalAmount)}">
+                                    <apex:param value="{! item.totalAmount}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td> &nbsp; </td>
+                        </tr>
+                    </apex:repeat>
+                </table>
+            </table>
+            
+            <table width="100%" style="margin-top:10px; line-height:1.5;" class="cls_003">
+                <tr>                
+                    <td style="width:60%;"></td>
+                    <td style="width:20%; text-align:right;">Total Fees:</td>
+                    <td style="width:30%; text-align:right;border-top:2px solid black;">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.totalBillAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </table>
+            <!-- Billing Line Details End -->
+            
+            <!-- Rate Summary Details Start -->
+            <div style="text-align:center; margin-top: 20px;" class="cls_004">Rate Summary</div>
+            <table width="100%" style= "margin-bottom: 20px; line-height:1.5;">
+                <tr>
+                    <td>
+                        <apex:repeat value="{!w.resourceWrapperList}" var="res">
+                            <tr>
+                                <td style="width:39%; border-collapse:collapse;" class="cls_003">
+                                    <apex:outputText value="{! res.resName}" />
+                                </td>
+                                <td style="width:40%; border-collapse:collapse;" class="cls_003">
+                                    <apex:outputText value="{! res.totalHours} hours at ${! res.avgRate}/hr" />
+                                </td>
+                                <td style="width:21%; border-collapse:collapse; text-align:left;" class="cls_003">
+                                    <apex:outputText value="{0, number, Currency}" style="float:right; margin-right:120px;">
+                                        <apex:param value="{! res.totalHours * res.avgRate}"/>
+                                    </apex:outputText>
+                                </td>
+                            </tr>
+                        </apex:repeat>
+                    </td>
+                </tr>
+            </table>
+            
+            <table width="100%" style="margin-top: -25px; line-height:1.6;" class="cls_003">
+                <tr>
+                    <td style="width:29%; text-align:right;">Total hours:</td>
+                    <td style="width:10%; text-align:right; border-top:2px solid black;">
+                        <apex:outputText value="{!ROUND(w.totalBillHours, 2)}"/>
+                    </td>
+                    <td style="width:60%;"></td>   
+                </tr>
+            </table>
+            <!-- Rate Summary Details End -->
+            
+            <!-- Expense Details Start -->
+            <table width="100%" style="border-collapse:collapse; margin-top:20px; line-height:1.8;">
+                <tr>
+                    <th class="cls_004" style="width:40%;">Expenses</th>
+                    <th style="width:40%;"></th>
+                    <th class="cls_003" style="width:20%; text-align:right;"><font> Amount</font></th>
+                </tr>
+                
+                <table width="100%" style="border-collapse:collapse; margin-top:10px;">
+                    <apex:repeat value="{!w.expenseWrapperList}" var="ex"> 
+                        <tr>
+                            <td style="border-collapse:collapse; width:12%;" class="cls_003">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}" rendered="{!!ISBLANK(ex.teDate)}"> <apex:param value="{!ex.teDate}"/> </apex:outputText>
+                            </td>
+                            <td style="border-collapse:collapse; width:20%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{! ex.payee}" rendered="{!!ISBLANK(ex.payee)}"/>
+                            </td>
+                            <td style="border-collapse:collapse; width:38%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{!SUBSTITUTE(ex.comment,'\n','\\\n')}" escape="false" style="white-space:pre;" rendered="{!!ISBLANK(ex.comment)}"/>
+                            </td>
+                            <td style="border-collapse:collapse; width:30%; text-align:right;" class="cls_003">
+                                <apex:outputText value="{! ex.totalAmount }" rendered="{!!ISBLANK(ex.totalAmount)}"/>
+                            </td>
+                        </tr>    
+                        <tr>
+                            <td> &nbsp; </td>
+                        </tr>
+                    </apex:repeat>
+                </table>
+            </table>
+            
+            <table width="100%" class="cls_003" style="margin-top:5px; border-collapse:collapse; line-height:1.8;">
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:40%; text-align:right;">Total Expenses:</td>
+                    <td style="width:20%;text-align:right;border-top:2px solid black;">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.totalExpenseAmount}"/>
+                        </apex:outputText>
+                    </td>                    
+                </tr>
+            </table>
+            <!-- Expense Details End -->
+            
+            <!-- Payment Details Start -->
+            <table width="100%" style="border-collapse:collapse; text-align:left; margin-top:20px; line-height:1.8;">
+                <tr>
+                    <th style="width:40%;" class="cls_004">Payments</th>
+                    <th style="width:40%;"></th>
+                    <th style="width:20%;"></th>
+                </tr>
+                
+                <table width="90%" style="border-collapse:collapse; margin-top:10px;">
+                    <apex:repeat value="{!w.crWrapList}" var="cr"> 
+                        <tr>
+                            <td style="border-collapse:collapse; width:25%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}"> <apex:param value="{!cr.receiptDate}" /> </apex:outputText>
+                            </td>
+                            <td style="border-collapse:collapse; width:40%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{!cr.paymentReference}" />
+                            </td>
+                            <td style="border-collapse:collapse; width:35%; text-align:right;" class="cls_003">
+                                <apex:outputText value="{0, number, Currency}">
+                                    <apex:param value="{! cr.amount}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>    
+                    </apex:repeat>
+                </table>
+            </table>
+            
+            <table width="90%" class="cls_003" style="margin-top:5px; border-collapse:collapse; line-height:1.8;">
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;">Total Payments:</td>
+                    <td style="width:20%; text-align:right; border-top:2px solid black;">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{! w.totalPaymentAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </table>
+            <!-- Payment Details End -->
+            
+            <!-- Trust Account Details Start -->
+            <table width="90%" style="border-collapse:collapse; margin-top:30px; line-height:1.8;">
+                <tr>
+                    <th class="cls_004" style="width:40%;">Trust Account</th>
+                    <th class="cls_003" style="width:40%; text-align:right;">Beginning Balance:</th>
+                    <th class="cls_003" style="width:20%; text-align:right;">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.beginningBalance}"/>
+                        </apex:outputText>
+                    </th>
+                </tr>
+                <table width="90%" style="border-collapse:collapse; margin-top:10px;">
+                    <apex:repeat value="{!w.crWrapperList}" var="cr"> 
+                        <tr>
+                            <td style="border-collapse:collapse; width:15%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}"> <apex:param value="{!cr.receiptDate}" /> </apex:outputText>
+                            </td>
+                            <td style="border-collapse:collapse; width:45%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{! cr.description}" />
+                            </td>
+                            <td style="border-collapse:collapse; width:30%; text-align:right;" class="cls_003">
+                                <apex:outputText value="{0, number, Currency}">
+                                    <apex:param value="{! cr.amount}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>    
+                    </apex:repeat>
+                </table>
+                <table width="90%" style="border-collapse:collapse; margin-top:10px;">
+                    <apex:repeat value="{!w.bcrWrapperList}" var="bcr"> 
+                        <tr>
+                            <td style="border-collapse:collapse; width:15%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}"> <apex:param value="{! bcr.appliedDate}" /> </apex:outputText>
+                            </td>
+                            <td style="border-collapse:collapse; width:45%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{! bcr.description }"/>
+                            </td>
+                            <td style="border-collapse:collapse; width:30%; text-align:right;" class="cls_003">
+                                <apex:outputText value="{0, number, Currency}">
+                                    <apex:param value="{! bcr.appliedAmount}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>    
+                    </apex:repeat>
+                </table>
+                <table width="90%" style="border-collapse:collapse; margin-top:10px;">
+                    <apex:repeat value="{!w.cdWrapperList}" var="cd"> 
+                        <tr>
+                            <td style="border-collapse:collapse; width:15%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{0,date,MM/dd/yyyy}"> <apex:param value="{! cd.disbursementDate}" /> </apex:outputText>
+                            </td>
+                            <td style="border-collapse:collapse; width:45%; text-align:left;" class="cls_003">
+                                <apex:outputText value="{! cd.description}" />
+                            </td>
+                            <td style="border-collapse:collapse; width:30%; text-align:right;" class="cls_003">
+                                <apex:outputText value="{0, number, Currency}">
+                                    <apex:param value="{! cd.amount}"/>
+                                </apex:outputText>
+                            </td>
+                        </tr>    
+                    </apex:repeat>
+                </table>
+            </table>
+            
+            <table width="90%" class="cls_003" style="margin-top:10px; border-collapse:collapse; line-height:1.8;">
+                <tr>                
+                    <td style="width:25%;"></td>
+                    <td style="width:45%; text-align:right;">Ending Balance:</td>
+                    <td style="width:20%; text-align:right; border-top:2px solid black;">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.endingBalance}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </table>
+            <!-- Trust Account Details End -->
+            
+            <!-- Billing Detail Start -->
+            <table width="100%" style="margin-top:50px; border-collapse:collapse; line-height:1.8;">
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_003">Total Current Billing:</td>
+                    <td style="width:20%; text-align:right;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.totalBillAmount+w.totalExpenseAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_003">Past Due Balance:</td>
+                    <td style="width:20%; text-align:right;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.pastDueBalance}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_003">Payments:</td>
+                    <td style="width:20%; text-align:right;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.totalPaymentAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_003">Balance:</td>
+                    <td style="width:20%; text-align:right;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!w.totalBillAmount+w.totalExpenseAmount+w.pastDueBalance+w.totalPaymentAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_003">Applied From Trust:</td>
+                    <td style="width:20%; text-align:right;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{! w.totalBcrAmount}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+                <tr>                
+                    <td style="width:40%;"></td>
+                    <td style="width:30%; text-align:right;" class="cls_004">Net Due:</td>
+                    <td style="width:20%; text-align:right; border-top:2px solid black;" class="cls_003">
+                        <apex:outputText value="{0, number, Currency}">
+                            <apex:param value="{!(w.totalBillAmount+w.totalExpenseAmount+w.pastDueBalance+w.totalPaymentAmount) + (w.totalBcrAmount)}"/> 
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </table>
+            <!-- Billing Detail End -->
+            
+            <!-- Payment Link Start -->
+            <table width="100%" style="margin-top:40px; text-align:center;" class="cls_005">
+                <tr>
+                    <td>
+                        <apex:outputText value="You can pay your bill online at"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <apex:outputLink target="_blank" value="https://johnsonturner.com"> https://johnsonturner.com </apex:outputLink>
+                    </td>
+                </tr>
+            </table>
+            <!-- Payment Link End -->
+            
+            <!-- Footer Start -->
+            <div class="footer" width="100%">
+                <tr>
+                    <td style="width:20%; text-align:left;">Johnson/Turner Legal</td>
+                    <td style="width:60%;"></td>
+                    <!-- td style="width:20%; text-align:right;">Page&nbsp;<span class="pagenumber" />&nbsp;of&nbsp;<span class="pagecount" /></td> -->
+                </tr>
+            </div>            
+            <!-- Footer End -->
+            
+        </body>
+        
+        <div style="page-break-after:always;"/>            
+        <apex:variable var="rowNum" value="{!rowNum + 1}"/>
+        
+    </apex:repeat>
+    
+</apex:page>

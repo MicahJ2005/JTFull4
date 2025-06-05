@@ -1,0 +1,121 @@
+<aura:component controller="AyPortalTrustAccountStatementController" implements="forceCommunity:availableForAllPageTypes" access="global" >
+	<aura:attribute name="dataWrapper" type="AyPortalTrustAccountStatementWrapper" description="Data Wrapper"/>
+
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}"/>
+
+    <lightning:card title="Trust Account Transactions" class="slds-card_boundary slds-box cardBorder">
+        <aura:iteration items="{!v.dataWrapper.trustActivities}" var="item">
+            <aura:if isTrue="{!not(empty(v.dataWrapper.errorMessage))}">
+              <ui:message title="Error" severity="error" closable="false">
+                {!v.dataWrapper.errorMessage}
+              </ui:message>
+              <aura:set attribute="else">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <div class="slds-page-header__name">
+                                            <div class="slds-page-header__name-title">
+                                                <h1>
+                                                    <span class="slds-page-header__title slds-truncate" title="Trust Activities"><ui:outputDate value="{!item.transactionDate}" /> | {!item.matterName}</span>
+                                                </h1>
+                                            </div>
+                                        </div>
+                                        <p class="slds-page-header__name-meta">{!item.description}</p>
+                                    </div>
+                                </div>
+                            </div> 
+                            <div class="slds-page-header__col-actions">
+                                <div class="slds-page-header__controls">
+                                <div class="slds-page-header__control" style="font-size:18px;">
+                                    <aura:if isTrue="{! item.description == 'Withdrawal'}">
+                                        (<ui:outputCurrency value="{! item.amount}"/>)
+                                        <aura:set attribute="else">
+                                            <ui:outputCurrency value="{!item.amount}"/>
+                                        </aura:set>
+                                    </aura:if>
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </p>
+    		</aura:set>
+    	</aura:if>
+      </aura:iteration>        
+    </lightning:card>
+
+    <br/>
+
+    <lightning:card title="Matter Trust Balances" class="slds-card_boundary slds-box cardBorder">
+        <aura:iteration items="{!v.dataWrapper.matterList}" var="item">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <div class="slds-page-header__name">
+                                            <div class="slds-page-header__name-title">
+                                                <h1>
+                                                    <span class="slds-page-header__title slds-truncate" title="Matter Trust Balances">{!item.matterName}</span>
+                                                </h1>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="slds-page-header__col-actions">
+                                <div class="slds-page-header__controls">
+                                <div class="slds-page-header__control" style="font-size:18px;">
+                                    <ui:outputCurrency value="{!item.amount}"/>
+                                </div>
+                                </div>
+                            </div> 
+                        </div> 
+                    </div>
+                </p>
+      </aura:iteration>        
+    </lightning:card>
+
+    <br/>
+
+    <lightning:card title=" Monthly Statement History" class="slds-card_boundary slds-box cardBorder">
+        <aura:iteration items="{!v.dataWrapper.trustBalance}" var="item">
+            <aura:if isTrue="{!not(empty(v.dataWrapper.errorMessage))}">
+              <ui:message title="Error" severity="error" closable="false">
+                {!v.dataWrapper.errorMessage}
+              </ui:message>
+              <aura:set attribute="else">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <div class="slds-page-header__name">
+                                            <div class="slds-page-header__name-title">
+                                                <h1>
+                                                    <span class="slds-page-header__title slds-truncate" title="Trust Activities"><ui:outputURL aura:id="oURL" label="{!item.statementNum}" value="{! '/s/monthlystatementpdf?recordId='+item.statementId}" target="_blank"/> | {!item.matterName}</span>
+                                                </h1>
+                                            </div>
+                                        </div>
+                                        <!--<p class="slds-page-header__name-meta">{!item.month} | Total: <ui:outputCurrency value="{! item.total}" /> | Due: <ui:outputCurrency value="{! item.dueAmount}"/> | Balance: <ui:outputCurrency value="{! item.balance}"/> </p>-->
+                                        <p class="slds-page-header__name-meta">{!item.month} </p>
+                                    </div>
+                                </div>
+                            </div> 
+                        </div>
+                        
+                    </div>
+                </p>
+    		</aura:set>
+    	</aura:if>
+      </aura:iteration>        
+    </lightning:card>
+
+    
+    
+</aura:component>

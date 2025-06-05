@@ -1,0 +1,23 @@
+<apex:page standardController="accorto__Invoice__c" recordSetVar="invoice" extensions="AyCreateBillFromInvoiceController" lightningStylesheets="true" sidebar="false" showHeader="false">
+    <apex:form >
+        <apex:pageMessage severity="info" summary="Your job has been scheduled. You'll receive an email when process is completed." rendered="{!displayConfirmationMsg}"/>
+        <apex:pageBlock rendered="{! !displayConfirmationMsg}">
+            <apex:pageBlockSection collapsible="false" columns="1">
+                <h1>You have selected {!totalRecords} record(s). System will create bills for {!totalQualifiedRecords} record(s).</h1>
+                <!--<apex:pageMessage severity="info" summary="No qualifying records." rendered="{! selectedInvoiceList.size == 0}"/>-->
+            </apex:pageBlockSection>
+            <!--apex:pageBlockTable value="{!invoice}" var="inv" rendered="{! selectedInvoiceList.size != 0}">
+                <apex:column value="{!inv.Name}" />
+                <apex:column value="{!inv.accorto__Invoice_Date__c}" />
+                <apex:column value="{!inv.accorto__Project__c}" />
+                <apex:column value="{!inv.accorto__Status__c}" />
+                <apex:column value="{!inv.accorto__Total_Amount__c}" />
+                
+            </apex:pageBlockTable>-->
+            <apex:pageBlockButtons location="bottom">
+                <apex:commandButton value="Go Back" action="{!cancel}"/>
+                <apex:commandButton value="Submit" action="{! createBillFromInvoice}" rendered="{! selectedInvoiceList.size != 0}"/>
+            </apex:pageBlockButtons>
+        </apex:pageBlock>
+    </apex:form>
+</apex:page>

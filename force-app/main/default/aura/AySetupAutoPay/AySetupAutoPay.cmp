@@ -1,0 +1,50 @@
+<aura:component controller="AySetupAutoPayCtrl" implements="force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickActionWithoutHeader" access="global" >
+	
+    <aura:html tag="style">
+        .cuf-content {
+        padding: 0 0rem !important;
+        }
+        .slds-p-around--medium {
+        padding: 0rem !important;
+        }
+        .slds-modal__content {
+        overflow-y: hidden !important;
+        height: unset !important;
+        max-height: unset !important;
+        }        
+    </aura:html>
+    
+    <!-- header -->
+    <div class="modal-header slds-modal__header slds-size_1-of-1">
+        <h4 class="title slds-text-heading--medium" >Setup Auto Pay</h4>
+    </div>
+    
+    <ltng:require scripts="{!$Resource.AyAffiniPay}" afterScriptsLoaded="{!c.onloadScript}" />
+    
+    <aura:attribute name="settings" type="String"/>
+    <aura:attribute name="contact" type="Map"/>
+    
+    <aura:attribute name="apAccounts" type="Map"/>
+    <aura:attribute name="emailTemplates" type="Array"/>
+	<aura:attribute name="apAccounts2" type="Map"/>
+    <aura:attribute name="dueDate" type="Date" />
+
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}" />
+    
+    
+        
+        <!--<div class="slds-card__body slds-card__body_inner slds-card_boundary" style="height:180px;">-->
+            <lightning:select name="paymentMethod" aura:id="paymentMethod" label="Payment Method" required="true">
+                <option value="">--Select--</option>
+                <aura:iteration items="{!v.contact.payment_methods}" var="item" start="0">
+                    <option value="{!item.id}">{!item.method_description}</option>
+                </aura:iteration>
+            </lightning:select>     
+        <!--</div>--> 
+        <div class="slds-col modal-footer slds-modal__footer">        
+            <lightning:button variant="brand" label="Submit" title="Submit" onclick="{!c.setupAutoPay_js}"/>
+        </div>
+             
+    
+    
+</aura:component>

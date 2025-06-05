@@ -1,0 +1,52 @@
+.THIS iframe {
+	width: 100%;
+	margin: 0px;
+	border: none;
+    height: 30px;
+}
+
+.THIS thead th .slds-cell-fixed {
+    border-top: 1px solid rgb(221, 219, 218);
+}
+
+.THIS thead th {
+    border-bottom: 1px solid rgb(221, 219, 218);
+}
+
+.THIS thead tr th span.slds-th__action {
+	font-weight: bold;
+}
+
+.THIS thead tr th:first-of-type span.slds-th__action {
+    padding-left: 1.5rem;
+}
+
+.THIS tbody tr th:first-of-type {
+    padding-left: 1.5rem;
+}
+
+.THIS hr {
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.THIS .slds-modal__content {
+    overflow: visible;
+}
+.THIS .spinner-holder{
+	position: relative;
+    display: inline-block;
+    margin-left: 15px;
+    width: 55px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.THIS .slds-input{
+    border:1px solid #dddbda;
+}
+.THIS .slds-select{
+    border:1px solid #dddbda;
+}
+.THIS .slds-checkbox_faux{
+    border:1px solid #dddbda;    
+}

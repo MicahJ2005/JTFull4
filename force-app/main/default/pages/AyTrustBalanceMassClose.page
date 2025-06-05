@@ -1,0 +1,20 @@
+<apex:page standardController="Trust_Balance__c" recordSetVar="tbal" extensions="AyTrustBalanceMassCloseController" lightningStylesheets="true" sidebar="false" showHeader="false">
+    <apex:form >
+        <apex:pageMessage severity="info" summary="Your job has been scheduled. You'll receive an email when process is completed." rendered="{!displayConfirmationMsg}"/>
+        <apex:pageBlock rendered="{! !displayConfirmationMsg}">
+            <apex:pageBlockSection collapsible="false" columns="1">
+                <h1>Following Trust Balance Records will be closed.</h1>
+                <apex:pageMessage severity="info" summary="No qualifying records." rendered="{!selectedTrustBalanceList.size == 0}"/>
+            </apex:pageBlockSection>
+            <apex:pageBlockTable value="{!selectedTrustBalanceList}" var="tb" rendered="{!selectedTrustBalanceList.size != 0}">
+                <apex:column value="{!tb.Name}" />
+                <apex:column value="{!tb.Matter__r.Name}" />
+                <apex:column value="{!tb.Accounting_Period__r.Name}" />
+            </apex:pageBlockTable>
+            <apex:pageBlockButtons location="bottom">
+                <apex:commandButton value="Go Back" action="{!cancel}"/>
+                <apex:commandButton value="Submit" action="{!massCloseTrustBalance}" rendered="{!selectedTrustBalanceList.size != 0}"/>
+            </apex:pageBlockButtons>
+        </apex:pageBlock>
+    </apex:form>
+</apex:page>

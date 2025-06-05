@@ -1,0 +1,203 @@
+<apex:page standardController="AcctSeed__Project__c" id="pg" sidebar="false" showHeader="false" extensions="AyTerminateOpportunityExt" lightningStylesheets="true">
+    <script>
+        function templateStatusJS(i){
+            disableForm();    
+            var tempId = "pg:frm:pb:tbodyWrap:"+i+":selected";
+            //alert('**TempId= '+tempId);
+            var sts = document.getElementById(tempId).value;
+            //alert('**sts= '+sts);
+            templateStatusAction(i, sts);
+            return null;
+        }
+        
+        function disableForm(){
+            $.blockUI({ 
+                message: $('#domMessage'),
+                overlayCSS: { backgroundColor: 'white' },
+                css: {border:'none',backgroundColor: 'transparent'}
+                    
+            });
+            return true;
+        }
+        
+        function enableForm(){
+            $.unblockUI();
+            return true;
+        }
+        
+    </script>
+    <apex:includeScript value="{!URLFOR($Resource.AyInterfaceResources, 'js/jquery-3.2.1.min.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.AyInterfaceResources, 'js/jquery-blockUI.js')}"/>
+    
+    <apex:slds />    
+    <apex:form id="frm">
+        <apex:pageMessages />
+        <apex:actionFunction action="{!onChangeTemplateStatus}" name="templateStatusAction" reRender="pb" oncomplete="enableForm();">
+            <apex:param name="i" value=""/>
+            <apex:param name="sts" value=""/>
+        </apex:actionFunction>
+    <apex:pageBlock id="pb">
+        <h2>Completed Cases</h2>
+        <apex:pageBlockTable var="w" value="{!closedCasesList}" columns="5">
+            <apex:column headerValue="Case">
+                <apex:outputField value="{!w.cs.CaseNumber}"/>
+            </apex:column>
+
+            <apex:column headerValue="Subject">
+                <apex:outputText value="{!w.cs.Subject}"/>
+            </apex:column>
+                        
+            <apex:column headerValue="Task Tracker Template">
+                <apex:outputText value="{!w.cs.Task_Tracker_Template__r.Name}"/>
+            </apex:column>
+
+            <apex:column headerValue="Total Hours">
+                <apex:outputText value="{!w.completedTaskHours}"/>
+            </apex:column>
+
+            <apex:column headerValue="Total Amount">
+                <apex:outputText value="{!w.completedTaskAmount}"/>
+            </apex:column>            
+            
+        </apex:pageBlockTable>
+
+        <br/><br/>
+        <!--
+        <h2>Open Cases</h2>
+        <apex:pageBlockTable var="w" value="{!openCasesList}" columns="6">
+            
+
+            <apex:column headerValue="Status">
+                <apex:selectList value="{!w.status}" multiselect="false" size="1">
+                    <apex:selectOption itemLabel="--None--" itemValue="" html-selected="true"></apex:selectOption>
+                    <apex:selectOption itemLabel="On Hold" itemValue="On Hold"></apex:selectOption>
+                    <apex:selectOption itemLabel="Terminated" itemValue="Terminated"></apex:selectOption>
+                </apex:selectList>
+            </apex:column>
+
+            <apex:column headerValue="Case">
+                <apex:outputField value="{!w.cs.CaseNumber}"/>
+            </apex:column>
+
+            <apex:column headerValue="Subject">
+                <apex:outputText value="{!w.cs.Subject}"/>
+            </apex:column>
+            
+            <apex:column headerValue="Task Tracker Template">
+                <apex:outputText value="{!w.cs.Task_Tracker_Template__r.Name}" rendered="{!IF(w.cs.Task_Tracker_Template__r.Is_Master_Template__c, true, false)}"/>
+                <apex:outputText value="{!w.cs.Task_Tracker_Template__r.Parent_Template__r.Name}" rendered="{!IF(w.cs.Task_Tracker_Template__r.Is_Master_Template__c = false, true, false)}"/>
+                
+            </apex:column>
+
+            <apex:column headerValue="Total Hours">
+                <apex:outputText value="{!w.openTaskHours}"/>
+            </apex:column>
+
+            <apex:column headerValue="Total Amount">
+                <apex:outputText value="{!w.openTaskAmount}"/>
+            </apex:column>                        
+            
+        </apex:pageBlockTable> -->
+        
+        <h2>Open Cases</h2>        
+        <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+            <thead>
+                <tr class="slds-line-height_reset">                      
+                    <th class="" scope="col">
+                        <div class="slds-truncate" title="Status">STATUS</div>
+                    </th>
+                    <th class="" scope="col">
+                    <div class="slds-truncate" title="Case">CASE</div>
+                    </th>
+                    <th class="" scope="col">
+                    <div class="slds-truncate" title="Subject">SUBJECT</div>
+                    </th>
+                    <th class="" scope="col">
+                    <div class="slds-truncate" title="Task Tracker Template">TASK TRACKER TEMPLATE</div>
+                    </th>                   
+                    <th class="" scope="col">
+                    <div class="slds-truncate" title="Total Hours">TOTAL HOURS</div>
+                    </th>
+                    <th class="" scope="col">
+                    <div class="slds-truncate" title="Total Amount">TOTAL AMOUNT</div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                <apex:repeat value="{!mainList}" var="wrapper" id="tbodyWrap">                    
+                    
+                    <apex:outputPanel rendered="{!wrapper.showData}" id="pnl">
+                    
+                        <tr>
+                            <td colspan="6" style="background-color:#d9d9d9;">
+                                <apex:outputText style="text-transform: uppercase; font-weight:bold;" value="{!wrapper.templateName}"/> 
+                                <!--apex:selectList multiselect="false" size="1" style="margin-left:10%;" id="selected" onchange="return templateStatusJS({!wrapper.index});">
+                                    <apex:selectOption itemLabel="--None--" itemValue="" ></apex:selectOption>
+                                    <apex:selectOption itemLabel="On Hold" itemValue="On Hold"></apex:selectOption>
+                                    <apex:selectOption itemLabel="Terminated" itemValue="Terminated"></apex:selectOption>
+                                </apex:selectList>-->
+                            </td>
+                        </tr>
+                        <tr>                        
+                            <apex:repeat value="{!wrapper.wrapperList}" var="oc">
+                                <apex:outputPanel rendered="{!oc.display}" id="pnl2">
+                                    <tr>
+                                    <td>
+                                        <apex:selectList value="{!oc.status}" multiselect="false" size="1">
+                                            <apex:selectOption itemLabel="--None--" itemValue="" ></apex:selectOption>
+                                            <apex:selectOption itemLabel="On Hold" itemValue="On Hold"></apex:selectOption>
+                                            <apex:selectOption itemLabel="Terminated" itemValue="Terminated"></apex:selectOption>
+                                        </apex:selectList>
+                                    </td>
+                                    <td>
+                                        <apex:outputText value="{!oc.cs.CaseNumber}"/>
+                                    </td>
+                        
+                                    <td>
+                                        <apex:outputText value="{!oc.cs.Subject}"/>
+                                    </td>
+                                    <td>
+                                        <apex:outputText value="{!oc.cs.Task_Tracker_Template__r.Name}" rendered="{!IF(oc.cs.Task_Tracker_Template__r.Is_Master_Template__c, true, false)}"/>
+                                        <apex:outputText value="{!oc.cs.Task_Tracker_Template__r.Parent_Template__r.Name}" rendered="{!IF(oc.cs.Task_Tracker_Template__r.Is_Master_Template__c = false, true, false)}"/>
+                                        
+                                    </td>
+                        
+                                    <td>
+                                        <apex:outputText value="{!oc.openTaskHours}"/>
+                                    </td>
+                        
+                                    <td>
+                                        <apex:outputText value="{!oc.openTaskAmount}"/>
+                                    </td>
+                                    </tr>
+                                </apex:outputPanel>
+                            </apex:repeat>    
+                            
+                        </tr>
+                    
+                    </apex:outputPanel>
+                    
+                </apex:repeat>
+            </tbody>
+        </table>
+        
+        <!-- for block UI -->
+      
+        <div id="domMessage" style="display:none;"> 
+            <div class="demo-only" style="height: 6rem;">
+              <div role="status" class="slds-spinner slds-spinner_medium slds-spinner_brand">
+                <span class="slds-assistive-text">Loading...</span>
+                <div class="slds-spinner__dot-a"></div>
+                <div class="slds-spinner__dot-b"></div>
+              </div>
+            </div>
+        </div> 
+        
+        
+        <apex:pageBlockButtons location="bottom" id="pbs">
+            <apex:commandButton value="Back" onclick="disableForm();" action="{!cancel}"/>
+            <apex:commandButton style="background-color:#0057B8; color:white;" value="Process" id="processBtn" onclick="disableForm();" action="{!redirectToMatterTermination}" />
+        </apex:pageBlockButtons>
+    </apex:pageBlock>
+    </apex:form>
+</apex:page>

@@ -1,0 +1,33 @@
+<apex:page standardController="AcctSeed__Project__c" extensions="AccortoMatterController"
+            title="Sync Matter to Project" lightningStylesheets="true">
+
+  <apex:sectionHeader title="Sync Matter to Project"
+                      subTitle="{!theMatter.Name}"/>
+  <apex:messages />
+
+  <apex:form id="f">
+    <apex:pageBlock title="Matter">
+      <apex:pageBlockButtons >
+        <apex:commandButton value="Sync Matter to Project" action="{!doSync}"/>
+        <apex:commandButton value="Back to: {!theMatter.Name}" action="{!goBack}"/>
+      </apex:pageBlockButtons>
+
+      <apex:pageBlockSection >
+        <apex:outputField value="{!theMatter.Name}"/>
+        <apex:outputField value="{!theMatter.AcctSeed__Opportunity__c}"/>
+        <apex:outputField value="{!theMatter.Project__c}"/>
+        <apex:outputField value="{!theMatter.AcctSeed__Account__c}"/>
+      </apex:pageBlockSection>
+    </apex:pageBlock>
+
+    <apex:pageBlock title="Project">
+      <apex:pageBlockSection >
+        <apex:outputField value="{!theProject.Name}"/>
+        <apex:outputField value="{!theProject.accorto__Opportunity__c}"/>
+        <apex:outputField value="{!theProject.accorto__Code__c}"/>
+        <apex:outputField value="{!theProject.accorto__Account__c}"/>
+      </apex:pageBlockSection>
+    </apex:pageBlock>
+  </apex:form>
+
+</apex:page>

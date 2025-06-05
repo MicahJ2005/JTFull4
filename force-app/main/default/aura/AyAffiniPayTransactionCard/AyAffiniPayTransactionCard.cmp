@@ -1,0 +1,152 @@
+<aura:component controller="AyAffiniPayTransactionCardCont" implements="force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickActionWithoutHeader" access="global" >
+    <aura:attribute name="dataWrapper" type="AyAffiniPayTransactionCardWrapper" description="Data Wrapper"/>
+    <aura:attribute name="recordId" type="string" description="Account Id" />
+    <aura:attribute name="newPaymentMethodType" type="string" description="tab id" default="cc"/>
+    <ltng:require scripts="{!$Resource.AyAffiniPay}" afterScriptsLoaded="{!c.onloadScript}" />
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}" />
+    
+
+    
+    <article class="slds-card">
+        <article class="slds-card">
+            <div class="slds-card__header slds-grid card">
+                <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                    <div class="slds-media__body">
+                        <h4 class="slds-card__header-title">
+                            <p class="slds-card__header-link slds-truncate" title="Check Information">
+                                <div class="slds-text-body_small">
+                                    <span >Payment Information</span>
+                                </div>
+                            </p>
+                        </h4>
+                    </div>
+                </header>
+            </div>
+            <div class="slds-card__body slds-card__body_inner slds-card_boundary">
+                
+                <lightning:input type="number" formatter="currency" aura:id="inputField" label="Amount" value="{!v.dataWrapper.amount}"  required="true" class="" step="0.01" min="0"/>
+                <br/>
+                <lightning:input type="text" aura:id="amount" label="Reference" value="{!v.dataWrapper.paymentRef}" required="" class=""/>
+                <div><br/></div>
+            </div>
+        </article>
+        
+        <lightning:accordion aura:id="accordion" activeSectionName="A">
+            <lightning:accordionSection name="A" label="Existing Payment Methods">
+                <aura:set attribute="body">
+                    <article class="slds-card">
+                        <div class="slds-card__body slds-card__body_inner slds-card_boundary">
+                            <lightning:select aura:id="methods" required="" variant="" label="Payment Method" value="{!v.dataWrapper.selectedMethodId}"  onchange="">
+                                <option value=""></option>
+                                <aura:if isTrue="{!v.dataWrapper.existingMethods.length > 0}">
+                                    <aura:iteration items="{!v.dataWrapper.existingMethods}" var="m">
+                                        <option value="{!m.methodId}">{!m.methodName}</option>
+                                    </aura:iteration>
+                                </aura:if>
+                            </lightning:select>
+                            <br/>
+                        </div>
+                    </article>
+                </aura:set>
+            </lightning:accordionSection>
+            <lightning:accordionSection name="B" label="New Payment Method">
+                <lightning:tabset selectedTabId="{!v.newPaymentMethodType}">
+                    <lightning:tab label="Credit Card" id="cc" >
+                        <article class="slds-card">
+                            <div class="slds-card__body slds-card__body_inner slds-card_boundary">
+                                <table class="slds-table slds-table_cell-buffer" aria-labelledby="element-with-table-label other-element-with-table-label">
+                                    <tr>
+                                        <td colspan="2">
+                                            <lightning:input type="text" aura:id="inputCC" label="Credit Card Number" value="{!v.dataWrapper.newMethod.ccNumber}" required="true" class="" maxlength="22"/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <lightning:input type="text" aura:id="inputCC" label="CVV" value="{!v.dataWrapper.newMethod.cvv}" required="true" class="" maxlength="4"/>
+                                        </td>
+                                        <td>
+                                        <lightning:input type="text" aura:id="inputCC" label="Postal Code" value="{!v.dataWrapper.newMethod.postalCode}" required="true" class=""/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <lightning:select aura:id="monthCC"  variant="" label="Month" value="{!v.dataWrapper.newMethod.month}" required="true">
+                                                <option value=""></option>
+                                                <option value="1">Janauary - 1</option>
+                                                <option value="2">February - 2</option>
+                                                <option value="">March - 3</option>
+                                                <option value="">April - 4</option>
+                                                <option value="">May - 5</option>
+                                                <option value="">June - 6</option>
+                                                <option value="">July - 7</option>
+                                                <option value="">August - 8</option>
+                                                <option value="">September - 9</option>
+                                                <option value="">October - 10</option>
+                                                <option value="">November - 11</option>
+                                                <option value="">December - 12</option>
+                                            </lightning:select>
+                                        </td>
+                                        <td>
+                                            <lightning:select aura:id="YearCC"  variant="" label="Year" value="{!v.dataWrapper.newMethod.year}" required="true">
+                                                <option value=""></option>
+                                                <aura:iteration items="{!v.dataWrapper.yearList}" var="year">
+                                                    <option value="{! year}">{! year}</option>
+                                                </aura:iteration>
+                                            </lightning:select>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <br/>
+                            </div>
+                        </article>
+                    </lightning:tab>
+                    <lightning:tab label="eCheck" id="ach">
+                        <article class="slds-card">
+                            <div class="slds-card__body slds-card__body_inner slds-card_boundary">
+                                <table class="slds-table slds-table_cell-buffer" aria-labelledby="element-with-table-label other-element-with-table-label">
+                                    <tr>
+                                        <td>
+                                            <lightning:select aura:id="accType" required="true" variant="" label="Bank Holder Type" value="{!v.dataWrapper.newMethod.accountHolderType}" class="" onchange="">
+                                                <option value=""></option>
+                                                <option value="Business">Business</option>
+                                                <option value="Individual">Individual</option>
+                                            </lightning:select>
+                                        </td>
+                                        <td>
+                                            <lightning:input type="text" aura:id="inputACH" label="Name" value="{!v.dataWrapper.newMethod.methodName}" required="true" class=""/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <lightning:input type="text" aura:id="inputACH" label="Account Number" value="{!v.dataWrapper.newMethod.accountNum}" required="true" class=""/>
+                                        </td>
+                                        <td>
+                                        <lightning:input type="text" aura:id="inputACH" label="Routing Number" value="{!v.dataWrapper.newMethod.routingNum}" required="true" class=""/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <lightning:select aura:id="bankType" required="true" variant="" label="Bank Account Type" value="{!v.dataWrapper.newMethod.bankAccountType}" class="" onchange="">
+                                                <option value=""></option>
+                                                <option value="Checking">Checking</option>
+                                                <option value="Savings">Savings</option>
+                                            </lightning:select>
+                                        </td>
+                                        <td>
+                                            <lightning:input type="text" aura:id="inputACH" label="Postal Code" value="{!v.dataWrapper.newMethod.postalCode}" required="true" class=""/>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <br/>
+                            </div>
+                        </article>
+                    </lightning:tab>
+                </lightning:tabset>
+            </lightning:accordionSection>
+        </lightning:accordion>
+        <footer class="slds-card__footer slds-text-align_right">
+            <button type="button" class="slds-button slds-button_neutral" onclick="{!c.closeComp}">Cancel</button>
+            <button type="button" class="slds-button slds-button_brand" onclick="{!c.submitAction}">Submit</button>
+        </footer>
+    </article>
+</aura:component>

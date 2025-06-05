@@ -1,0 +1,43 @@
+<apex:page standardController="Opportunity" lightningStylesheets="true" extensions="AyCreateFinanceFromOppExt">
+    <apex:pageMessages />
+    <apex:form >
+        <apex:pageBlock title="Select Opportunities to Finance">
+            <apex:pageBlockTable value="{!wrapperList}" var="w" columns="4">
+                <apex:column headerValue="Select">
+                    <apex:inputCheckbox value="{!w.selected}"/>
+                </apex:column>
+                <apex:column headerValue="Opportunity">
+                    <apex:outputText value="{!w.opp.Name}"/>
+                </apex:column>
+
+                <apex:column headerValue="Stage">
+                    <apex:outputText value="{!w.opp.StageName}"/>
+                </apex:column>
+
+                <apex:column headerValue="Attorney">
+                    <apex:outputText value="{!w.opp.Billing_Attorney_lk__r.Name}"/>
+                </apex:column>
+            </apex:pageBlockTable>
+
+            <apex:pageBlockButtons location="bottom">
+                <apex:commandButton value="Back" action="{!cancel}"/>
+                <apex:commandButton value="Create Financing" action="{!createFinance}"/>
+            </apex:pageBlockButtons>
+        </apex:pageBlock>
+        
+        <!--<apex:pageBlock title="Finance Details">
+            <apex:pageBlockSection collapsible="false" >
+                <apex:inputField value="{!fin.Downpayment__c}" required="true"/>
+                <apex:inputField value="{!fin.Payment_Frequency__c}" required="true"/>
+                <apex:inputField value="{!fin.No_of_Instalments__c}" required="true"/>
+                <apex:inputField value="{!fin.First_Instalment_Payment_Date__c}" required="true"/>
+            </apex:pageBlockSection>
+
+            <apex:pageBlockButtons location="bottom">
+                <apex:commandButton value="Back" action="{!cancel}"/>
+                <apex:commandButton value="Create Financing" action="{!createFinance}"/>
+            </apex:pageBlockButtons>
+        </apex:pageBlock>-->
+
+    </apex:form>
+</apex:page>

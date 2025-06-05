@@ -1,0 +1,25 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 12-07-2020
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   12-02-2020   Revolution Group (Brian Ezell)   Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,force:lightningQuickAction,forceCommunity:availableForAllPageTypes" controller="ClientMarkTaskCompleteController">
+  <aura:handler name="init" value="{! this }" action="{! c.doInit }" />
+  <aura:attribute name="taskStatus" type="String" />
+  <aura:attribute name="showButton" type="Boolean" />
+  <aura:attribute name="objectTypeName" type="String" />
+
+
+  <div class="slds-text-heading_large">
+    {! v.objectTypeName }
+  </div>
+
+  <aura:if isTrue="{!v.showButton}">
+    <lightning:button onclick="{!c.closeTask}" iconName="action:check">Mark Complete</lightning:button>
+  </aura:if>
+</aura:component>

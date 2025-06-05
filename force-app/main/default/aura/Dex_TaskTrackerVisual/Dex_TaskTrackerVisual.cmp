@@ -1,0 +1,61 @@
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,forceCommunity:availableForAllPageTypes" access="global" controller="DEX_CasesOnObjectController">
+    <aura:handler name="init" value="{! this }" action="{! c.doInit }" />
+    <aura:handler event="force:refreshView" action="{! c.doInit }"/>
+    <aura:attribute name="CaseLinkedField" type="String" default="project__c" />
+    <aura:attribute name="CaseListOfSummaries" type="Object"  />
+
+    <div class="slds-clearfix slds-card forceDetailPanelDesktop" >
+
+        <lightning:card title="Task Tracker" iconName="standard:account">
+        </lightning:card>
+
+            <aura:if isTrue="{! v.CaseListOfSummaries.length > 0 }">
+
+                <lightning:accordion aura:id="accordion" allowMultipleSectionsOpen="true" activeSectionName ="A">
+
+                    <aura:iteration items="{!v.CaseListOfSummaries}" var="caseList">
+
+                        <lightning:accordionSection name="A" label="{! caseList.ParentCaseName }">
+
+                            <lightning:layout multipleRows="true">
+
+                                <lightning:layoutItem size="12">
+
+                                    <lightning:layout>
+                                        <lightning:layoutItem size="12" padding="around-small">
+                                            <span style="font-size:1.2em;font-weight: bold;">Overall Progress ({! caseList.ParentCaseName  })</span>
+                                            <lightning:progressBar aura:Id="OverallProgress" title="{! caseList.Label }" value="{! caseList.OverallPercentComplete }" />
+                                        </lightning:layoutItem>
+                                    </lightning:layout>
+
+                                </lightning:layoutItem>
+
+                                <aura:iteration items="{! caseList.Summaries }" var="item">
+                                    <lightning:layoutItem size="12" padding="around-small">
+                                        <lightning:layout>
+                                            <lightning:layoutItem size="1">
+                                                &nbsp;
+                                            </lightning:layoutItem>
+                                            <lightning:layoutItem size="{! item.Indent }">
+                                                &nbsp;
+                                            </lightning:layoutItem>
+                                            <lightning:layoutItem size="{! 11 - item.Indent }">
+                                                {! item.CompositeLabel }
+                                                <lightning:progressBar aura:Id="{! 'progress_' + item.CaseId }" title="{! item.CompositePct + '%' }" value="{! item.CompositePct }" />
+                                                
+                                            </lightning:layoutItem>
+                                        </lightning:layout>
+
+                                    </lightning:layoutItem>
+
+                                </aura:iteration>
+
+                            </lightning:layout>
+
+                        </lightning:accordionSection>
+
+                    </aura:iteration>
+            </lightning:accordion>
+        </aura:if>
+    </div>
+</aura:component>

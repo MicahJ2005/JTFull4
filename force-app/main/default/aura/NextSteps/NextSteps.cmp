@@ -1,0 +1,119 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 08-05-2021
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   02-02-2021   Revolution Group (Brian Ezell)   Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,force:lightningQuickAction" access="global" Controller="NextStepController">
+
+    <!--FLOW VARIABLES-->
+    <aura:attribute name="includeNextSteps" type="Boolean" />
+    <aura:attribute name="productSelectedIds" type="List" />
+    <aura:attribute name="templatesToFinalize" type="List" />
+    <!-- Added By Christan Gordon (Revolution Group) on 12/29/2021: Used to store next step Opportunity record instance received from flow -->
+    <aura:attribute name="nextStepOpp" type="Object" />
+
+    <!--SHOW/HIDE TOGGLES-->
+    <aura:attribute name="showFlow" type="Boolean" default="true" />
+    <aura:attribute name="showTemplateSelector" type="Boolean" default="false" />
+    <aura:attribute name="showEditHourDialog" type="Boolean" default="false" />
+
+    <!--TREE GRID VARIABLES-->
+    <aura:attribute name="templateItems" type="Object" />
+    <aura:attribute name="templateSelectedItems" type="List" />
+    <aura:attribute name="currentTemplateSelectedItems" type="List" />
+    <aura:attribute name="previousTemplateSelectedItems" type="List" />
+    <aura:attribute name="templateColumns" type="List" />
+    <aura:attribute name="gridExpandedRows" type="List" />
+    <aura:attribute name="listToggledId" type="List"/>
+    <aura:attribute name="mapSubcomponents" type="Object" />
+    <aura:attribute name="treeGridEvent" type="String" default="Expand" />
+    <aura:attribute name="mapTaskToHours" type="Object" />
+
+    <aura:attribute name="templateName" type="String" />
+
+    <!--OBJECT IDS-->
+    <aura:attribute name="opportunityId" type="String" default="" />
+
+    <aura:attribute name="isLoading" type="Boolean" />
+    <aura:attribute name="progress" type="Decimal" />
+
+    <!--Edit Hours -->
+    <aura:attribute name="editHoursObject" type="Object" />
+    <aura:attribute name="editHoursNewHours" type="Decimal" />
+    <aura:attribute name="editHoursRowId" type="String" />
+
+    <!--EVENTS-->
+    <aura:handler name="init" value="{! this }" action="{! c.onInit }"/>
+
+    <lightning:card>
+
+        <lightning:layout multipleRows="true">
+
+            <lightning:layoutItem size="12">
+                <aura:if isTrue="{! v.showFlow }">
+                    <lightning:flow aura:id="templateFlow" onstatuschange="{! c.flowStatusChanged }"/>
+                </aura:if>
+            </lightning:layoutItem>
+
+                <aura:if isTrue="{! v.showTemplateSelector }">
+
+                    <lightning:layoutItem size="12">
+
+                        <h3>
+                            {! v.templateName }
+                        </h3>
+
+                        <lightning:progressBar value="{! v.progress }" />
+
+                        <div class="slds-p-around_medium lgc-bg">
+                            <lightning:treeGrid aura:id="nextStepGrid"
+                                columns="{! v.templateColumns }"
+                                data="{! v.templateItems }"
+                                keyField="Id"
+                                expandedRows="{! v.gridExpandedRows }"
+                                onrowselection="{! c.onRowSelected }"
+                                ontoggle="{! c.onToggleGrid }"
+                                selectedRows = "{! v.templateSelectedItems }"
+                                onrowaction="{! c.handleRowAction }"
+                                ></lightning:treeGrid>
+                        </div>
+                        <lightning:button aura:id="btnFinalize" variant="success" label="Finalize Scope" title="Finalize Scope" onclick="{! c.clickCreateOppAndTemplate }"></lightning:button>
+                </lightning:layoutItem>
+            </aura:if>
+
+        </lightning:layout>
+
+
+        <aura:if isTrue="{! v.showEditHourDialog }">
+
+            <!--MODAL DIALOG FOR EDITING HOURS-->
+            <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <h2 id="modal-heading-01" class="slds-modal__title slds-hyphenate">Edit Hours</h2>
+                    <p class="slds-m-top_x-small">
+                        {! v.editHoursObject.Name }
+                    </p>
+                </header>
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                    <p>
+                        <ui:inputNumber label="Hours:" value="{! v.editHoursNewHours }" />
+                    </p>
+                </div>
+                <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_neutral" onclick="{! c.onCancelHours }">Cancel</button>
+                    <button class="slds-button slds-button_success" onclick="{! c.onSaveHours }">Save</button>
+                </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </aura:if>
+
+    </lightning:card>
+
+</aura:component>

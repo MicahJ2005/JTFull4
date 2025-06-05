@@ -1,0 +1,182 @@
+<aura:component controller="AyPortalBillingController" implements="forceCommunity:availableForAllPageTypes" access="global" >
+	<aura:attribute name="dataWrapper" type="AyPortalBillingDetailWrapper" description="Data Wrapper"/>
+    <aura:attribute name="todaysDate" type="Date"/>
+
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}"/>
+
+    <lightning:card title="Unpaid Invoices" class="slds-card_boundary slds-box cardBorder">
+        <aura:set attribute="actions">
+            <!--
+            <div style="font-size:16px;font-weight:bold;">
+                Total Outstanding Balance: <ui:outputCurrency value="{!v.dataWrapper.upcomingTotalBalance}"/><br/>
+                Total Past Due: <ui:outputCurrency value="{!v.dataWrapper.totalPastDue}"/><br/>
+                Due Within 15 Days: <ui:outputCurrency value="{!v.dataWrapper.dueWithin15Days}"/>
+            </div> -->
+            
+            <div class="slds-grid slds-gutters">
+                <div class="slds-col">
+                    <tr>
+                        <th>
+                            <div>Total Outstanding Balance:</div>
+                        </th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.upcomingTotalBalance}"/>
+                        </td>
+                    </tr>
+                </div>
+                <div class="slds-col">
+                    <tr>
+                        <th>
+                            <div>Total Past Due:</div>
+                        </th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.totalPastDue}"/>
+                        </td>
+                    </tr>
+                </div>
+                <div class="slds-col">
+                    <tr>
+                        <th>
+                            <div>Due Within 15 Days:</div>
+                        </th>
+                    </tr>
+                    <tr>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.dueWithin15Days}"/>
+                        </td>
+                    </tr>
+                </div>
+            </div>
+           <!--
+            <table class="slds-grid slds-gutters">
+                <thead>
+                    <tr>
+                        <th>
+                            <div>Total Outstanding Balance:</div>
+                        </th>
+                        <th>
+                            <div>Total Past Due:</div>
+                        </th>
+                        <th>
+                            <div>Due Within 15 Days:</div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.upcomingTotalBalance}"/>
+                        </td>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.totalPastDue}"/>
+                        </td>
+                        <td>
+                            <ui:outputCurrency value="{!v.dataWrapper.dueWithin15Days}"/>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            -->
+        </aura:set>
+        <aura:iteration items="{!v.dataWrapper.futureBillings}" var="item">
+            <aura:if isTrue="{!not(empty(v.dataWrapper.errorMessage))}">
+              <ui:message title="Error" severity="error" closable="false">
+                {!v.dataWrapper.errorMessage}
+              </ui:message>
+              <aura:set attribute="else">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <aura:if isTrue="{! and(v.todaysDate > item.dueDate, item.balance > 0)}">
+                                            <div style="color: red;">
+                                                <div class="slds-page-header__name">
+                                                    <div class="slds-page-header__name-title">
+                                                        <h1>
+                                                            <span class="slds-page-header__title slds-truncate" title="Billing Details">{!item.billingNumber} | {!item.matterName}</span>
+                                                        </h1>
+                                                    </div>
+                                                </div>
+                                                <p class="slds-page-header__name-meta">Due Date: <ui:outputDate value="{!item.dueDate}" /> | {!item.status} | Invoice Amount: <ui:outputCurrency value="{!item.amount}" /> | Balance Due: <ui:outputCurrency value="{!item.balance}"/> </p>
+                                            </div>
+                                            <aura:set attribute="else">
+                                                <div class="slds-page-header__name">
+                                                    <div class="slds-page-header__name-title">
+                                                        <h1>
+                                                            <span class="slds-page-header__title slds-truncate" title="Billing Details">{!item.billingNumber} | {!item.matterName}</span>
+                                                        </h1>
+                                                    </div>
+                                                </div>
+                                                <p class="slds-page-header__name-meta">Due Date: <ui:outputDate value="{!item.dueDate}" /> | {!item.status} | Invoice Amount: <ui:outputCurrency value="{!item.amount}" /> | Balance Due: <ui:outputCurrency value="{!item.balance}"/> </p>
+                                            </aura:set>
+                                        </aura:if>
+                                    </div>
+                                </div>
+                            </div>
+                            <!--<div class="slds-page-header__col-actions">
+                                <div class="slds-page-header__controls">
+                                <div class="slds-page-header__control" style="font-size:18px;">
+                                    <ui:outputCurrency value="{!item.balance}"/>
+                                </div>
+                                </div>
+                            </div> -->
+                        </div>
+                        
+                    </div>
+                </p>
+    		</aura:set>
+    	</aura:if>
+      </aura:iteration>        
+    </lightning:card>
+    <br/>
+    <lightning:card title="Paid Invoices" class="slds-card_boundary slds-box cardBorder">
+        <aura:set attribute="actions">
+            <div style="font-size:16px;font-weight:bold;">
+            Total Balance Due:  <ui:outputCurrency value="{!v.dataWrapper.pastTotalBalance}"/>
+            </div>
+        </aura:set>
+        <aura:iteration items="{!v.dataWrapper.pastBillings}" var="item">
+            <aura:if isTrue="{!not(empty(v.dataWrapper.errorMessage))}">
+              <ui:message title="Error" severity="error" closable="false">
+                {!v.dataWrapper.errorMessage}
+              </ui:message>
+              <aura:set attribute="else">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <div class="slds-page-header__name">
+                                            <div class="slds-page-header__name-title">
+                                                <h1>
+                                                    <span class="slds-page-header__title slds-truncate" title="Billing Details">{!item.billingNumber} | {!item.matterName}</span>
+                                                </h1>
+                                            </div>
+                                        </div>
+                                        <p class="slds-page-header__name-meta">Due Date: <ui:outputDate value="{!item.dueDate}" /> | {!item.status} | Invoice Amount: <ui:outputCurrency value="{!item.amount}" /> | Balance Due: <ui:outputCurrency value="{!item.balance}" /> </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!--<div class="slds-page-header__col-actions">
+                                <div class="slds-page-header__controls">
+                                <div class="slds-page-header__control" style="font-size:18px;">
+                                    <ui:outputCurrency value="{!item.balance}" />
+                                </div>
+                                </div>
+                            </div>--> 
+                        </div>
+                        
+                    </div>
+                </p>
+    		</aura:set>
+    	</aura:if>
+      </aura:iteration>        
+    </lightning:card>    
+</aura:component>

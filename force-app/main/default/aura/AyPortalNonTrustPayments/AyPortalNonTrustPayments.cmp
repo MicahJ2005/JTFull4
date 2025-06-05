@@ -1,0 +1,43 @@
+<aura:component controller="AyPortalNonTrustPaymentsController" implements="forceCommunity:availableForAllPageTypes" access="global" >
+	<aura:attribute name="dataWrapper" type="AyPortalNonTrustPaymentsWrapper" description="Data Wrapper"/>
+
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}"/>
+
+    <lightning:card title="Fee Payments" class="slds-card_boundary slds-box cardBorder" >
+        <aura:set attribute="actions">
+            <div style="font-size:16px;font-weight:bold;">
+            Total Payments :  <ui:outputCurrency value="{!v.dataWrapper.totalAmount}"/>
+            </div>
+        </aura:set>
+        <aura:iteration items="{!v.dataWrapper.paymentsList}" var="item">
+            <aura:if isTrue="{!not(empty(v.dataWrapper.errorMessage))}">
+              <ui:message title="Error" severity="error" closable="false">
+                {!v.dataWrapper.errorMessage}
+              </ui:message>
+              <aura:set attribute="else">
+                <p class="slds-p-horizontal_small">
+                    <div class="slds-page-header">
+                        <div class="slds-page-header__row">
+                            <div class="slds-page-header__col-title">
+                                <div class="slds-media">
+                                    <div class="slds-media__body">
+                                        <div class="slds-page-header__name">
+                                            <div class="slds-page-header__name-title">
+                                                <h1>
+                                                    <span class="slds-page-header__title slds-truncate" title="Trust Activities"><ui:outputCurrency value="{! item.amount}"/> | {!item.matterName}</span>
+                                                </h1>
+                                            </div>
+                                        </div>
+                                        <p class="slds-page-header__name-meta"><ui:outputDate value="{!item.receivedDate}" /><aura:renderIf isTrue="{! item.isTrustDeposit == 'Yes'}"> | Trust Deposit</aura:renderIf></p>
+                                    </div>
+                                </div>
+                            </div> 
+                        </div>
+                        
+                    </div>
+                </p>
+    		</aura:set>
+    	</aura:if>
+      </aura:iteration>        
+    </lightning:card>
+</aura:component>

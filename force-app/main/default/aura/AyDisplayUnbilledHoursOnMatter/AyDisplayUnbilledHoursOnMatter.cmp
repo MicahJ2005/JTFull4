@@ -1,0 +1,13 @@
+<aura:component controller="AyDisplayUnbilledHoursOnMatterController" implements="flexipage:availableForRecordHome,force:hasRecordId" access="global">
+	
+    <aura:attribute name="totalUnbilledHours" type="Decimal"/>
+    
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}"/> 
+	
+    <lightning:card class="slds-align_absolute-center" title="Total Value of Unbilled Hours :" iconName="standard:business_hours">    
+        <div style="font-size:18px; font-weight:bold;">
+         <ui:outputCurrency value="{!v.totalUnbilledHours}"/>
+        </div>
+    </lightning:card>
+    
+</aura:component>

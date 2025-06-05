@@ -1,0 +1,89 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 07-06-2021
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   07-06-2021   Revolution Group (Brian Ezell)   Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,force:lightningQuickAction" access="global" controller="EditNextStepOpportunityController">
+
+    <!--EVENTS-->
+    <aura:handler name="init" value="{! this }" action="{! c.onInit }"/>
+
+    <aura:attribute name="showEditHourDialog" type="Boolean" default="false" />
+    <aura:attribute name="showSpinner" type="Boolean" default="false" />
+
+    <!--TREE GRID VARIABLES-->
+    <aura:attribute name="caseData" type="Object" />
+    <aura:attribute name="caseSelectedItems" type="List" />
+    <aura:attribute name="caseColumns" type="List" />
+    <aura:attribute name="gridExpandedRows" type="List" />
+    <aura:attribute name="listToggledId" type="List"/>
+    <aura:attribute name="treeGridEvent" type="String" default="Expand" />
+    <aura:attribute name="mapTaskToHours" type="Object" />
+    <aura:attribute name="editHoursRowId" type="Decimal" />
+
+    <aura:attribute name="currentCaseSelectedItems" type="List" />
+
+    <aura:attribute name="editHoursNewHours" type="Decimal" />
+    <aura:attribute name="editHoursType" type="String" />
+    <aura:html tag="style">
+        .slds-modal__container {
+        min-width: 70vw;
+        }
+    </aura:html>
+        <lightning:card>
+
+        <lightning:layout multipleRows="true">
+                <lightning:layoutItem size="12">
+                    <div class="slds-p-around_medium lgc-bg">
+                        <lightning:treeGrid aura:id="nextStepGrid"
+                            columns="{! v.caseColumns }"
+                            data="{! v.caseData }"
+                            keyField="Id"
+                            expandedRows="{! v.gridExpandedRows }"
+                            hideCheckboxColumn="true"
+                            ontoggle="{! c.onToggleGrid }"
+                            onrowaction="{! c.handleRowAction }"
+                            ></lightning:treeGrid>
+                    </div>
+
+            </lightning:layoutItem>
+        </lightning:layout>
+
+        <aura:if isTrue="{! v.showEditHourDialog }">
+
+            <!--MODAL DIALOG FOR EDITING HOURS-->
+            <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <aura:if isTrue="{! v.showSpinner }">
+                        <lightning:spinner alternativeText="Loading" size="medium" />
+                    </aura:if>
+                <header class="slds-modal__header">
+                    <h2 id="modal-heading-01" class="slds-modal__title slds-hyphenate">Edit Hours</h2>
+                    <p class="slds-m-top_x-small">
+                        {! v.editHoursObject.Name }
+                    </p>
+                </header>
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                    <p>
+                        <ui:inputNumber label="Hours:" value="{! v.editHoursNewHours }" />
+                    </p>
+                </div>
+                <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_neutral" onclick="{! c.onCancelHours }">Cancel</button>
+                    <button class="slds-button slds-button_success" onclick="{! c.onSaveHours }">Save</button>
+                </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </aura:if>
+
+    </lightning:card>
+    
+
+
+</aura:component>

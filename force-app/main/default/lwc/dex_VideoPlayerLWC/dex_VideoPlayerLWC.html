@@ -1,0 +1,17 @@
+<template>
+    <template lwc:if={showTasks}>
+        <lightning-card title="Educational Resources" icon-name="custom:custom96">
+            <div class="slds-m-around_medium">
+                <template for:each={tasks} for:item="task">
+                    <p key={task.Id}>
+                        <lightning-formatted-url
+                            label={task.Subject}
+                            value={task.Url}
+                            target="_blank">
+                        </lightning-formatted-url>
+                    </p>
+                </template>
+            </div>
+        </lightning-card>
+    </template>
+</template>

@@ -1,0 +1,415 @@
+<aura:component controller="AyPaymentsComponentController"  implements="forceCommunity:availableForAllPageTypes,lightning:hasPageReference,lightning:isUrlAddressable" access="global">
+
+    <!-- from navigation -->
+    <aura:attribute type="String" name="cpaId"/>
+    <aura:handler name="init" value="{!this}" action="{!c.doInIt}"/>    
+
+    <!-- page vars-->
+    <aura:attribute name="settings" type="String" />
+    <aura:attribute name="contact" type="Map"/>
+    <aura:attribute name="isEditable" type="Boolean" default="true"/>
+    <aura:attribute name="contactEmail" type="String" default=""/>    
+    <aura:attribute name="obj" type="Map"/>
+    <aura:attribute name="chargeErrors" type="Array" default="['']"/>
+    <aura:attribute name="sObjectName" type="String" default="Customer_Products_Approval__c" />
+
+    <aura:attribute name="dataWrapper" type="AyAffiniPayTransactionCardWrapper"/>
+    
+    <aura:attribute name="actionsDisabled" type="boolean" default="false"/>
+    <aura:attribute name="isCreditCardVisible" type="boolean" default="false"/>
+    <aura:attribute name="hasChargeErrors" type="boolean" default="false"/>
+    <aura:attribute name="isAchVisible" type="boolean" default="false"/>
+
+    <ltng:require scripts="{!$Resource.AyAffiniPay}" afterScriptsLoaded="{!c.onloadScript}" />
+    <lightning:navigation aura:id="navService"/>
+
+    <aura:if isTrue="{!v.isEditable}">
+        <div class="slds-m-around_xx-large">
+         <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+        <div class="slds-modal__container">
+
+        <header class="slds-modal__header">
+            <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">Manage Payment Methods</h2>
+        </header>
+
+        <article class="slds-card">
+            <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                <div aria-labelledby="newchargeform">
+                    
+                    <aura:if isTrue="{!v.hasChargeErrors}">
+                        <div id="errorBlock" class="slds-size--1-of-1 slds-medium-size--1-of-1 slds-large-size--1-of-1 slds-col slds-p-horizontal_medium">
+                            <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error" role="alert">
+                                <span class="slds-assistive-text">error</span>
+                                <div id="errorPanel">
+                                    <aura:iteration items="{!v.chargeErrors}" var="item" start="0">
+                                        <p>{!item}</p>
+                                    </aura:iteration>                                    
+                                </div>
+                            </div>
+                        </div>
+                    </aura:if>                        
+                    
+                    
+                </div>                
+            </div>
+
+        <!--<lightning:tabset variant="scoped">
+            <lightning:tab onactive="{! c.handleActiveTab }" label="Credit Card" id="creditcard" >
+
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:input label="Card Holder" type="text" aura:Id="cardHolder" required="true" name="cardHolder" />    
+                    </lightning:layoutItem>
+
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:input label="Email" type="text" aura:Id="cardHolderEmail" required="true" name="cardHolderEmail" />    
+                    </lightning:layoutItem>
+                </lightning:layout>
+
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <div>
+                            <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                            <abbr class="slds-required" title="required">*</abbr>
+                            <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Credit Card Number</label>
+                            <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                <div id='ap_credit_card_field_id'></div>
+                            </div>
+                            <aura:if isTrue="{!v.isCardError}">
+                            <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                            Enter a valid credit card number
+                            </div>
+                            </aura:if>
+                        </div>
+                    </lightning:layoutItem>
+                </lightning:layout>
+    
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <div>
+                            <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                            <abbr class="slds-required" title="required">*</abbr>
+                            <label lightning-input_input="" class="slds-form-element__label slds-no-flex">CVV</label>
+                            <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                <div id='ap_cvv_field_id'></div>
+                            </div>
+                            <aura:if isTrue="{!v.isCvvError}">
+                            <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                            Enter a valid cvv
+                            </div>
+                            </aura:if>
+                        </div>
+                    </lightning:layoutItem>
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:input type="text" aura:id="postalCode" label="Postal Code" required="true"
+                                    name="postalCode"/>
+                    </lightning:layoutItem>
+                </lightning:layout>
+        
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:select name="cc-month" aura:id="cc-month" label="Month" required="true">
+                            <option value="1">January - 1</option>
+                            <option value="2">February - 2</option>
+                            <option value="3">March - 3</option>
+                            <option value="4">April - 4</option>
+                            <option value="5">May - 5</option>
+                            <option value="6">June - 6</option>
+                            <option value="7">July - 7</option>
+                            <option value="8">August - 8</option>
+                            <option value="9">September - 9</option>
+                            <option value="10">October - 10</option>
+                            <option value="11">November - 11</option>
+                            <option value="12">December - 12</option>
+                        </lightning:select>
+                    </lightning:layoutItem>
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:select name="cc-year" aura:id="cc-year" label="Year" required="true">
+                            <option value="2019">2019</option>
+                            <option value="2020">2020</option>
+                            <option value="2021">2021</option>
+                            <option value="2022">2022</option>
+                            <option value="2023">2023</option>
+                            <option value="2024">2024</option>
+                            <option value="2025">2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2028">2028</option>
+                            <option value="2029">2029</option>
+                        </lightning:select>
+                    </lightning:layoutItem> 
+                </lightning:layout>
+            </lightning:tab>
+
+            <lightning:tab onactive="{! c.handleActiveTab }" label="eCheck" id="ach" >
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:select name="ach-acct-holder-type" aura:id="ach-acct-holder-type" label="Account Holder Type" required="true" onchange="{! c.handleAcctTypeChange }">
+                            <option value="business">Business</option>
+                            <option value="individual">Individual</option>
+                        </lightning:select>
+                    </lightning:layoutItem>
+                    <aura:if isTrue="{!v.isAchBusiness}">
+                        <lightning:layoutItem flexibility="auto" padding="around-small">
+                            <lightning:input type="text" aura:id="ach-acct-name" label="Name" required="true"
+                                        name="ach-acct-name"/>                                        
+                        </lightning:layoutItem>
+                    </aura:if>
+                    <aura:if isTrue="{!v.isAchIndividual}">
+                        <lightning:layoutItem flexibility="auto" padding="around-small">
+                            <lightning:input type="text" aura:id="ach-acct-first-name" label="First Name" required="true"
+                                        name="ach-acct-first-name"/>
+                        </lightning:layoutItem>
+                        <lightning:layoutItem flexibility="auto" padding="around-small">
+                            <lightning:input type="text" aura:id="ach-acct-last-name" label="Last Name" required="true"
+                                        name="ach-acct-last-name"/>
+                        </lightning:layoutItem>
+                    </aura:if>
+                </lightning:layout>
+                    
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <div>
+                            <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                            <abbr class="slds-required" title="required">*</abbr>
+                            <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Account Number</label>
+                            <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                <div id='ap_acct_number_field_id'></div>
+                            </div>
+                            <aura:if isTrue="{!v.isAchAcctNumError}">
+                                <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                                    Enter a valid account number
+                                </div>
+                            </aura:if>
+                        </div>
+                    </lightning:layoutItem>
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <div>
+                            <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                            <abbr class="slds-required" title="required">*</abbr>
+                            <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Routing Number</label>
+                            <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                <div id='ap_acct_routing_field_id'></div>
+                            </div>
+                            <aura:if isTrue="{!v.isAchRoutingNumError}">
+                            <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                            Enter a valid routing number
+                            </div>
+                            </aura:if>
+                        </div>
+                    </lightning:layoutItem>
+                </lightning:layout>
+                    
+                <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                        <lightning:select name="ach-bank-acct-type" aura:id="ach-bank-acct-type" label="Bank Account Type" required="true">
+                            <option value="checking">Checking</option>
+                            <option value="savings">Savings</option>
+                        </lightning:select>
+                    </lightning:layoutItem>
+                    <lightning:layoutItem flexibility="auto" padding="around-small">                                    
+                        <lightning:input type="text" aura:id="ach-postal-code" label="Postal Code" required="true" name="ach-postal-code"/>
+                    </lightning:layoutItem>
+                </lightning:layout>
+
+            </lightning:tab>
+        </lightning:tabset>-->
+        <lightning:accordion aura:id="accordion" activeSectionName="{!v.activeAccordianSection}">
+                <lightning:accordionSection name="existingPaymentMethod" label="Saved Payment Methods">
+                    <lightning:select name="paymentMethod" aura:id="paymentMethod" label="Payment Method" required="true">
+                        <option value="">--Select--</option>
+                        <aura:iteration items="{!v.contact.payment_methods}" var="item" start="0">
+                            <option value="{!item.id}">{!item.method_description}</option>
+                        </aura:iteration>
+                    </lightning:select>                                
+                </lightning:accordionSection>
+
+                <lightning:accordionSection name="newPaymentMethod" label="New Payment Method">
+                    <lightning:tabset variant="scoped">
+                        <lightning:tab onactive="{! c.handleActiveTab }" label="Credit Card" id="creditcard" >
+
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:input label="Card Holder" type="text" aura:Id="cardHolder" name="cardHolder" />    
+                                </lightning:layoutItem>
+
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:input label="Email" type="text" aura:Id="cardHolderEmail" required="true" name="cardHolderEmail" />    
+                                </lightning:layoutItem>
+                            </lightning:layout>
+
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <div>
+                                        <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                                        <abbr class="slds-required" title="required">*</abbr>
+                                        <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Credit Card Number</label>
+                                        <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                            <div id='ap_credit_card_field_id'></div>
+                                        </div>
+                                        <aura:if isTrue="{!v.isCardError}">
+                                        <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                                        Enter a valid credit card number
+                                        </div>
+                                        </aura:if>
+                                    </div>
+                                </lightning:layoutItem>
+                            </lightning:layout>
+                
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <div>
+                                        <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                                        <abbr class="slds-required" title="required">*</abbr>
+                                        <label lightning-input_input="" class="slds-form-element__label slds-no-flex">CVV</label>
+                                        <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                            <div id='ap_cvv_field_id'></div>
+                                        </div>
+                                        <aura:if isTrue="{!v.isCvvError}">
+                                        <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                                        Enter a valid cvv
+                                        </div>
+                                        </aura:if>
+                                    </div>
+                                </lightning:layoutItem>
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:input type="text" aura:id="postalCode" label="Postal Code" required="true"
+                                                name="postalCode"/>
+                                </lightning:layoutItem>
+                            </lightning:layout>
+                    
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:select name="cc-month" aura:id="cc-month" label="Month" required="true">
+                                        <option value="1">January - 1</option>
+                                        <option value="2">February - 2</option>
+                                        <option value="3">March - 3</option>
+                                        <option value="4">April - 4</option>
+                                        <option value="5">May - 5</option>
+                                        <option value="6">June - 6</option>
+                                        <option value="7">July - 7</option>
+                                        <option value="8">August - 8</option>
+                                        <option value="9">September - 9</option>
+                                        <option value="10">October - 10</option>
+                                        <option value="11">November - 11</option>
+                                        <option value="12">December - 12</option>
+                                    </lightning:select>
+                                </lightning:layoutItem>
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:select name="cc-year" aura:id="cc-year" label="Year" required="true">
+                                        <option value="2019">2019</option>
+                                        <option value="2020">2020</option>
+                                        <option value="2021">2021</option>
+                                        <option value="2022">2022</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2026">2026</option>
+                                        <option value="2027">2027</option>
+                                        <option value="2028">2028</option>
+                                        <option value="2029">2029</option>
+                                    </lightning:select>
+                                </lightning:layoutItem> 
+                            </lightning:layout>
+                            
+                        </lightning:tab>
+
+                        <lightning:tab onactive="{! c.handleActiveTab }" label="eCheck" id="ach" >
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:select name="ach-acct-holder-type" aura:id="ach-acct-holder-type" label="Account Holder Type" required="true" onchange="{! c.handleAcctTypeChange }">
+                                        <option value="business">Business</option>
+                                        <option value="individual">Individual</option>
+                                    </lightning:select>
+                                </lightning:layoutItem>
+
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:input label="Email" type="text" aura:Id="ach-cardHolderEmail" required="true" name="ach-cardHolderEmail" />    
+                                </lightning:layoutItem>
+                                <aura:if isTrue="{!v.isAchBusiness}">
+                                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                                        <lightning:input type="text" aura:id="ach-acct-name" label="Name" required="true"
+                                                    name="ach-acct-name"/>                                        
+                                    </lightning:layoutItem>
+                                </aura:if>
+                                <aura:if isTrue="{!v.isAchIndividual}">
+                                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                                        <lightning:input type="text" aura:id="ach-acct-first-name" label="First Name" required="true"
+                                                    name="ach-acct-first-name"/>
+                                    </lightning:layoutItem>
+                                    <lightning:layoutItem flexibility="auto" padding="around-small">
+                                        <lightning:input type="text" aura:id="ach-acct-last-name" label="Last Name" required="true"
+                                                    name="ach-acct-last-name"/>
+                                    </lightning:layoutItem>
+                                </aura:if>
+                            </lightning:layout>
+                                
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <div>
+                                        <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                                        <abbr class="slds-required" title="required">*</abbr>
+                                        <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Account Number</label>
+                                        <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                            <div id='ap_acct_number_field_id'></div>
+                                        </div>
+                                        <aura:if isTrue="{!v.isAchAcctNumError}">
+                                            <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                                                Enter a valid account number
+                                            </div>
+                                        </aura:if>
+                                    </div>
+                                </lightning:layoutItem>
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <div> 
+                                        <span lightning-input_input="" data-aria="true" class="slds-assistive-text"></span>
+                                        <abbr class="slds-required" title="required">*</abbr>
+                                        <label lightning-input_input="" class="slds-form-element__label slds-no-flex">Routing Number</label>
+                                        <div lightning-input_input="" class="slds-form-element__control slds-grow" data-children-count="1">
+                                            <div id='ap_acct_routing_field_id'></div>
+                                        </div>
+                                        <aura:if isTrue="{!v.isAchRoutingNumError}">
+                                        <div lightning-input_input="" id="cc-help-message" data-help-message="true" role="alert" class="slds-form-element__help">
+                                        Enter a valid routing number
+                                        </div>
+                                        </aura:if>
+                                    </div>
+                                </lightning:layoutItem>
+                            </lightning:layout>
+                                
+                            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                                <lightning:layoutItem flexibility="auto" padding="around-small">
+                                    <lightning:select name="ach-bank-acct-type" aura:id="ach-bank-acct-type" label="Bank Account Type" required="true">
+                                        <option value="checking">Checking</option>
+                                        <option value="savings">Savings</option>
+                                    </lightning:select>
+                                </lightning:layoutItem>
+                                <lightning:layoutItem flexibility="auto" padding="around-small">                                    
+                                    <lightning:input type="text" aura:id="ach-postal-code" label="Postal Code" required="true" name="ach-postal-code"/>
+                                </lightning:layoutItem>
+                            </lightning:layout>
+
+                        </lightning:tab>
+                    </lightning:tabset>
+                </lightning:accordionSection>
+            </lightning:accordion>
+        <footer class="slds-card__footer slds-text-align_right">
+            <aura:if isTrue="{!v.actionsDisabled}">
+                <div class="spinner-holder">
+                    <lightning:spinner alternativeText="Loading" size="small" />
+                </div>
+            </aura:if>
+
+            <lightning:button variant="neutral" label="Back" title="Back" disabled="{!v.actionsDisabled}" onclick="{!c.closeModal}"/>
+            <lightning:button variant="brand" label="Submit" title="Submit" disabled="{!v.actionsDisabled}" onclick="{!c.doStoreMethod}"/>
+        </footer>
+    </article>
+
+    </div></section>
+    <div class="slds-backdrop slds-backdrop_open"></div>
+
+</div>
+    </aura:if>
+    
+    
+</aura:component>

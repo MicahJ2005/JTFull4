@@ -1,0 +1,36 @@
+<!--
+  @description       :
+  @author            : Revolution Group (Brian Ezell)
+  @group             :
+  @last modified on  : 09-21-2020
+  @last modified by  : Revolution Group (Brian Ezell)
+  Modifications Log
+  Ver   Date         Author                           Modification
+  1.0   09-01-2020   Revolution Group (Brian Ezell)   Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,force:lightningQuickAction" access="global" controller="TaskTemplateCloneController">
+
+    <aura:attribute name="errorMessage" type="String" />
+    <aura:attribute name="masterTemplateName" type="String" />
+    <aura:attribute name="buttonDisabled" type="Boolean" default="false" />
+
+    <lightning:layout multipleRows="true">
+
+        <lightning:layoutItem padding="around-small">
+            Template Name:
+            <lightning:input value="{! v.masterTemplateName }" />
+        </lightning:layoutItem>
+
+        <lightning:layoutItem size="6">
+            {! v.errorMessage }
+        </lightning:layoutItem>
+
+    </lightning:layout>
+
+    <lightning:layout multipleRows="true">
+        <lightning:layoutItem padding="around-small">
+            <lightning:button variant="success" label="Clone" title="Clone" onclick="{! c.handleCloneClick }" disabled="{! v.buttonDisabled }" />
+        </lightning:layoutItem>
+    </lightning:layout>
+
+</aura:component>

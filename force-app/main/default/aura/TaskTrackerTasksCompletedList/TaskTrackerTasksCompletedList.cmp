@@ -1,0 +1,68 @@
+<!--
+  @File Name          : TaskTrackerTasksCompletedList.cmp
+  @Description        :
+  @Author             : Revolution Group (Brian Ezell)
+  @Group              :
+  @Last Modified By   : Revolution Group (Brian Ezell)
+  @Last Modified On   : 09-30-2021
+  @Modification Log   :
+  Ver       Date            Author      		    Modification
+  1.0    1/28/2020   Revolution Group (Brian Ezell)     Initial Version
+-->
+<aura:component implements="flexipage:availableForAllPageTypes,flexipage:availableForRecordHome,force:hasRecordId,forceCommunity:availableForAllPageTypes" access="global" controller="TaskTrackerTasksCompletedController">
+    <aura:handler name="init" value="{! this }" action="{! c.doInit }" />
+    <aura:attribute name="TaskList" type="List" />
+    <aura:attribute name="CompletedTasks" type="String[]" />
+    <aura:attribute name="IsLoading" type="Boolean" default="false" />
+    <aura:attribute name="SelectedTaskName" type="String" />
+    <aura:attribute name="EventList" type="List" />
+
+    <lightning:flow aura:id="eventScreenPop" onstatuschange="{! c.changeFlowStatus }" class="slds-hide" />
+
+    <lightning:card>
+        <aura:set attribute="title">
+            Events
+        </aura:set>
+        <aura:set attribute="footer">
+        </aura:set>
+        <p class="slds-var-p-horizontal_small">
+            <ul>
+                <aura:iteration items="{!v.EventList}" var="event">
+                    <li>
+                        {! event.Subject }
+                    </li>
+                </aura:iteration>
+            </ul>
+        </p>
+
+    </lightning:card>
+
+    <lightning:card>
+        <aura:set attribute="title">
+            Tasks
+        </aura:set>
+        <aura:set attribute="footer">
+        </aura:set>
+        <p class="slds-var-p-horizontal_small">
+            <aura:if isTrue="{! v.IsLoading }">
+				<lightning:spinner alternativeText="Loading" size="medium" />
+            </aura:if>
+
+            <ul>
+                <aura:if isTrue="{! not(empty(v.TaskList)) }">
+                    <lightning:checkboxGroup aura:id="chkTaskList"
+                                             name="chkTaskList"
+                                             label="Task List"
+                                             options="{! v.TaskList }"
+                                             value="{! v.CompletedTasks }"
+                                             onchange="{! c.toggleTaskListItem }"
+                                             disabled="{! v.IsLoading }" />
+                    <aura:set attribute="else">
+                        No Tasks On This Case
+                    </aura:set>
+                </aura:if>
+            </ul>
+        </p>
+    </lightning:card>
+
+</aura:component>

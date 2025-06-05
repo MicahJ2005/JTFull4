@@ -1,0 +1,24 @@
+<!--
+  @File Name          : VisualForceTracker.page
+  @Description        :
+  @Author             : Revolution Group (Brian Ezell)
+  @Group              :
+  @Last Modified By   : Revolution Group (Brian Ezell)
+  @Last Modified On   : 08-21-2020
+  @Modification Log   :
+  Ver       Date            Author                  Modification
+  1.0    6/5/2020   Revolution Group (Brian Ezell)     Initial Version
+-->
+<apex:page controller="VisualForceTrackerController">
+
+  <apex:includeScript value="{!$Resource.mermaid_min_js}" loadOnReady="true"></apex:includeScript>
+
+  <div id="flow" class="mermaid">
+      {!mermaidFlow}
+  </div>
+
+  <script>
+      mermaid.initialize({startOnLoad:true});
+  </script>
+
+</apex:page>

@@ -1,0 +1,124 @@
+<aura:component controller="AyManageAutoPayCtrl" implements="force:hasRecordId,forceCommunity:availableForAllPageTypes,force:lightningQuickActionWithoutHeader" access="global" >
+	
+    <aura:html tag="style">
+        .cuf-content {
+        padding: 0 0rem !important;
+        }
+        .slds-p-around--medium {
+        padding: 0rem !important;
+        }
+        .slds-modal__content {
+        overflow-y: hidden !important;
+        height: unset !important;
+        max-height: unset !important;
+        }        
+    </aura:html>
+    
+    <!-- header -->
+    <div class="modal-header slds-modal__header slds-size_1-of-1">
+        <h4 class="title slds-text-heading--medium" >Setup Auto Pay</h4>
+    </div>
+    
+    <ltng:require scripts="{!$Resource.AyAffiniPay}" afterScriptsLoaded="{!c.onloadScript}" />
+    
+    <aura:attribute name="contact" type="Map"/>
+    <aura:attribute name="wrap" type="AyAutoPayWrapper" />
+    
+    <aura:attribute name="selectedMatter" type="String"/>
+    <aura:attribute name="mattersMap" type="Map"/>
+    
+    <aura:attribute name="changePaymentMethod" type="Boolean" default="false"/>
+    
+    <aura:handler name="init" action="{!c.doInIt}" value="{!this}" />
+    
+    <!-- Existing Auto-Pay -->
+    <aura:If isTrue="{! !v.changePaymentMethod}">
+        <div class="slds-page-header">
+          <div class="slds-page-header__row">
+            <div class="slds-page-header__col-title">
+              <div class="slds-media">
+                <div class="slds-media__figure">
+                    <center><b>Matters with Auto-Pay enabled</b></center>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+	    <article class="slds-card">
+            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                <lightning:layoutItem flexibility="auto" padding="around-small">
+                    <table class="slds-table slds-table_cell-buffer slds-table_bordered" aria-label="Example default base table of Opportunities">
+                        <thead>
+                            <tr class="slds-line-height_reset">
+                                <th class="" scope="col">
+                                    <div class="slds-truncate" title="Matter">Matter</div>
+                                </th>
+                                <th class="" scope="col">
+                                    <div class="slds-truncate" title="Payment Method">Payment Method</div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <aura:iteration items="{!v.wrap.existingSetupList}" var="itm">
+                                <tr class="slds-hint-parent">
+                                    <td data-label="Matter">
+                                        <div class="slds-truncate">{!itm.matterName}</div>
+                                    </td>
+                
+                                    <td data-label="Payment Method">
+                                        <div class="slds-truncate">{!itm.paymentMethod}</div>
+                                    </td>
+                                </tr>       
+                            </aura:iteration>
+                        </tbody>
+                    </table>
+                </lightning:layoutItem>
+            </lightning:layout>
+            
+            <div class="slds-col modal-footer slds-modal__footer">        
+                <lightning:button variant="brand" label="Manage Auto-Pay" title="Submit" onclick="{!c.changePaymentMethod}"/>
+            </div>
+        </article>
+    </aura:If>
+    
+    <!-- Setup New -->
+    <aura:If isTrue="{!v.changePaymentMethod}">
+        <div class="slds-page-header">
+          <div class="slds-page-header__row">
+            <div class="slds-page-header__col-title">
+              <div class="slds-media">
+                <div class="slds-media__figure">
+                    <center><b>Manage Auto-Pay</b></center>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <article class="slds-card">
+            <lightning:layout verticalAlign="center" class="x-large"  pullToBoundary="small">
+                <lightning:layoutItem flexibility="auto" padding="around-small">
+                    <lightning:select aura:id="mattersPicklist" value="{!v.selectedMatter}" name="mattersPicklist" label="Select Matter" required="true">
+                        <option value="">--Select Matter--</option>
+                        <aura:iteration items="{!v.mattersMap}" var="mtr" indexVar="key">
+                            <option value="{!mtr.key}">{!mtr.value}</option>
+                        </aura:iteration>
+                    </lightning:select>
+                </lightning:layoutItem>
+                
+                <lightning:layoutItem flexibility="auto" padding="around-small">
+                    <lightning:select name="paymentMethod" aura:id="paymentMethod" label="Payment Method" required="true">
+                        <option value="">--Select Payment Method--</option>
+                        <aura:iteration items="{!v.contact.payment_methods}" var="item" start="0">
+                            <option value="{!item.id}">{!item.method_description}</option>
+                        </aura:iteration>
+                    </lightning:select>
+                </lightning:layoutItem>        
+            </lightning:layout>
+            
+            <div class="slds-col modal-footer slds-modal__footer">        
+                <lightning:button variant="neutral" label="Cancel" title="Cancel" onclick="{!c.cancelChangePaymentMethod}"/>
+                <lightning:button variant="brand" label="Submit" title="Submit" onclick="{!c.setupAutoPay_js}"/>
+            </div>
+        </article>
+    </aura:If>         
+</aura:component>
