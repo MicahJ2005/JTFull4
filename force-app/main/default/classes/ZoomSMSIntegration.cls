@@ -409,6 +409,9 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
         formats.add(digits.substring(0, 3) + '.' + digits.substring(3, 6) + '.' + digits.substring(6));
         formats.add(digits.substring(0, 3) + ' ' + digits.substring(3, 6) + ' ' + digits.substring(6));
         formats.add('+1-' + digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
+        formats.add('+1' + digits.substring(0, 3) + '' + digits.substring(3, 6) + '' + digits.substring(6));
+        formats.add('1-' + digits.substring(0, 3) + '' + digits.substring(3, 6) + '' + digits.substring(6));
+        formats.add(digits.substring(0, 3) + '' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('001-' + digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('1'+digits);
         formats.add(digits); // Just the raw number
