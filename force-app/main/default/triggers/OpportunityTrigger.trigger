@@ -13,9 +13,14 @@ trigger OpportunityTrigger on Opportunity (after insert, after update) {
 
     List<Opportunity> newOpps = Trigger.new;
     Map<Id, Opportunity> oldOppsMap = (Map<Id, Opportunity>)Trigger.oldMap;
+    Map<Id, Opportunity> newOppsMap = (Map<Id, Opportunity>)Trigger.newMap;
 
     if(Trigger.isInsert) {
         OpportunityTriggerHandler.createDefaultRoles(newOpps);
+        if(Trigger.isAfter){
+            System.debug('InafterINsert Trigger');
+            OpportunityTriggerHandler.RelateCommunicationsForOpportunities(newOppsMap);
+        }
     } else {
         OpportunityTriggerHandler.createProjectOnClosedWonOpportunity(newOpps, oldOppsMap);
         OpportunityTriggerHandler.updateCESRoleIfOwnerChanges(newOpps, oldOppsMap);

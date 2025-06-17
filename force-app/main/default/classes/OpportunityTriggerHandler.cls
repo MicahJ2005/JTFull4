@@ -247,4 +247,82 @@ public class OpportunityTriggerHandler {
         PermissionSetAssignment  pr = new PermissionSetAssignment (AssigneeId=u.Id,PermissionSetId=pSet.Id);
         insert pr;
     }
+
+    public static void RelateCommunicationsForOpportunities(Map<Id, Opportunity> newMap) {
+        Set<Id> accountIds = new Set<Id>();
+        for (Opportunity opp : newMap.values()) {
+            if (opp.AccountId != null) {
+                accountIds.add(opp.AccountId);
+            }
+        }
+
+        // Get all prior Opportunities for the same accounts, excluding the newly inserted ones
+        List<Opportunity> priorOpps = [
+            SELECT Id, AccountId, CreatedDate
+            FROM Opportunity
+            WHERE AccountId IN :accountIds
+            AND Id NOT IN :newMap.keySet()
+            ORDER BY CreatedDate DESC
+        ];
+
+        // Map of AccountId -> most recent previous Opportunity
+        Map<Id, Opportunity> mostRecentPriorOppMap = new Map<Id, Opportunity>();
+        for (Opportunity opp : priorOpps) {
+            if (!mostRecentPriorOppMap.containsKey(opp.AccountId)) {
+                mostRecentPriorOppMap.put(opp.AccountId, opp);
+            }
+        }
+
+        List<SObject> newLinks = new List<SObject>();
+
+        for (Opportunity newOpp : newMap.values()) {
+            Id acctId = newOpp.AccountId;
+            if (acctId == null || !mostRecentPriorOppMap.containsKey(acctId)) continue;
+
+            Opportunity prevOpp = mostRecentPriorOppMap.get(acctId);
+
+            // Call Transcripts
+            List<Related_Call_Transcript__c> prevCalls = [
+                SELECT Id, Call_Transcript__c
+                FROM Related_Call_Transcript__c
+                WHERE Opportunity__c = :prevOpp.Id
+            ];
+            for (Related_Call_Transcript__c call : prevCalls) {
+                newLinks.add(new Related_Call_Transcript__c(
+                    Opportunity__c = newOpp.Id,
+                    Call_Transcript__c = call.Call_Transcript__c
+                ));
+            }
+
+            // Meeting Transcripts
+            List<Related_Meeting_Transcript__c> prevMeetings = [
+                SELECT Id, Meeting_Transcript__c
+                FROM Related_Meeting_Transcript__c
+                WHERE Opportunity__c = :prevOpp.Id
+            ];
+            for (Related_Meeting_Transcript__c meeting : prevMeetings) {
+                newLinks.add(new Related_Meeting_Transcript__c(
+                    Opportunity__c = newOpp.Id,
+                    Meeting_Transcript__c = meeting.Meeting_Transcript__c
+                ));
+            }
+
+            // Text Messages
+            List<Related_Text_Message__c> prevTexts = [
+                SELECT Id, Text_Message_Session__c
+                FROM Related_Text_Message__c
+                WHERE Opportunity__c = :prevOpp.Id
+            ];
+            for (Related_Text_Message__c text : prevTexts) {
+                newLinks.add(new Related_Text_Message__c(
+                    Opportunity__c = newOpp.Id,
+                    Text_Message_Session__c = text.Text_Message_Session__c
+                ));
+            }
+        }
+
+        if (!newLinks.isEmpty()) {
+            insert newLinks;
+        }
+    }
 }
