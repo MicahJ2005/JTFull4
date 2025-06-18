@@ -322,7 +322,7 @@ public class OpportunityTriggerHandler {
         }
 
         if (!newLinks.isEmpty()) {
-            insert newLinks;
+            // insert newLinks;
         }
     }
 }
