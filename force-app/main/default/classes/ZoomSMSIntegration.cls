@@ -12,8 +12,8 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
         String accountId = 'Af5TohNeQKiIODcnyFCOyQ';
         String accessToken = ZoomPhoneIntegration.getZoomToken(clientId, clientSecret, accountId);
         Datetime now = Datetime.now(); // Current datetime
-        String toDateTime = now.addHours(0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); //current time
-        String fromDateTime = now.addHours(-24).addMinutes(-0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // Grab the last 24hrs
+        String toDateTime = now.addHours(-24).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); //current time
+        String fromDateTime = now.addHours(-48).addMinutes(-0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // Grab the last 24hrs
 
 
         System.debug('accessToken: ' + accessToken);
@@ -403,6 +403,7 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
         system.debug('phone entering: '+ phone);
         system.debug('phone transformed: '+ digits);
         // Create different formats
+        formats.add(digits.substring(0, 3) + '' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('(' + digits.substring(0, 3) + ') ' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add(digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('1-' +digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
@@ -411,7 +412,7 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
         formats.add('+1-' + digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('+1' + digits.substring(0, 3) + '' + digits.substring(3, 6) + '' + digits.substring(6));
         formats.add('1-' + digits.substring(0, 3) + '' + digits.substring(3, 6) + '' + digits.substring(6));
-        formats.add(digits.substring(0, 3) + '' + digits.substring(3, 6) + '-' + digits.substring(6));
+        // formats.add(digits.substring(0, 3) + '' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('001-' + digits.substring(0, 3) + '-' + digits.substring(3, 6) + '-' + digits.substring(6));
         formats.add('1'+digits);
         formats.add(digits); // Just the raw number
