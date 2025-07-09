@@ -34,6 +34,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
             Meeting_Transcript__c transcriptToAdd = new Meeting_Transcript__c();
                 transcriptToAdd.Transcript__c = text;
                 transcriptToAdd.Johnson_Turner_User__c = sfUser;
+                transcriptToAdd.OwnerId = sfUser;
                 transcriptToAdd.Meeting_Date__c = Date.today();
                 transcriptToAdd.Zoom_Meeting_Id__c = zoomId;
                 transcriptToAdd.Transcript_Sequence__c = sequenceNumber;
@@ -86,7 +87,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
         ///these Date/time parameters will give us Zoom Meetings that are within a 3hr window, starting 1 hr ago
         Datetime now = Datetime.now(); // Current datetime
         String toDateTime = now.addDays(-1).formatGMT('yyyy-MM-dd'); // 1 hour ago
-        String fromDateTime = now.addHours(-5).formatGMT('yyyy-MM-dd'); // 4 hours ago
+        String fromDateTime = now.addHours(-4).formatGMT('yyyy-MM-dd'); // 4 hours ago
         String ZOOM_MEETING_ENDPOINT = 'https://api.zoom.us/v2/users/';
         String queryParams = 'from=' + EncodingUtil.urlEncode(fromDateTime, 'UTF-8') +
                                  '&to=' + EncodingUtil.urlEncode(toDateTime, 'UTF-8') +
@@ -119,14 +120,15 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
             for(Meeting meeting : wrappedData.meetings) {
                 if(!zoomMeetingIdsAlreadyImported.contains(meeting.uuid)){
                     system.debug('This is a new Transcript ' + meeting.uuid + ' Keep it...');
+                    system.debug('This is the Zoom Event Id ' + meeting.id + ' YEAH!!');
                     for (RecordingFile file : meeting.recording_files) {
                         if(file.file_type == 'TRANSCRIPT'){
-                            if(userToTranscriptFileMap.containsKey(zoomId)){
-                                userToTranscriptFileMap.get(zoomId).add(file);
+                            if(userToTranscriptFileMap.containsKey(zoomId+'#'+meeting.id)){
+                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
                             }
                             else{
-                                userToTranscriptFileMap.put(zoomId, new List<RecordingFile>());
-                                userToTranscriptFileMap.get(zoomId).add(file);
+                                userToTranscriptFileMap.put(zoomId+'#'+meeting.id, new List<RecordingFile>());
+                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
                             }
                             
                         }
@@ -180,6 +182,8 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
     
         return plainText;
     }
+
+   
 
     public class RecordingWrapper {
         // public String from;

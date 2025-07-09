@@ -99,9 +99,11 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
             
             for(SMSHistoryWrapper history: sessionIdToMessageMap.get(sessionId)){
                 for(SMSHistory h: history.sms_histories){
+                    System.debug('h.sender.phone_number'+ h.sender.phone_number);
                     allPhoneNumbers.addAll(generatePhoneFormats(h.sender.phone_number));
                     for(ToMember toMember: h.to_members){
                         if(toMember.phone_number != null){
+                            System.debug('toMember.phone_number'+ toMember.phone_number);
                             allPhoneNumbers.addAll(generatePhoneFormats(toMember.phone_number));
                             if(toMember.display_name != null){
                                 allNames.add(toMember.display_name);

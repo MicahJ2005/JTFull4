@@ -438,6 +438,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         Map<String, User> phoneToUserIdMap = new Map<String, User>();
         
         Set<string> setPhoneFormats = new Set<String>();
+        Set<string> setPhoneExtensions = new Set<String>();
         //Set<string> setAllNames = new Set<String>();
 
         /// get maps of Users based on phone number
@@ -478,6 +479,9 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                                 setPhoneFormats.add(phone);
                             }
                         }
+                        if(userId.length() == 4){
+                            setPhoneExtensions.add(userId);
+                        }
                     }
                 } else {
                     System.debug('No matching CallResponse found for callId: ' + callId);
@@ -499,10 +503,9 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             ? ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats) 
             : new List<User>();
 
-        // List<User> returnedUserByName = getRelatedUsersByName(setAllNames) != null 
-        //     ? getRelatedUsersByName(setAllNames) 
-        //     : new List<User>();
-        //     system.debug('returnedUserByName'+ returnedUserByName);
+        List<User> returnedUserExtension = getRelatedUsersByExtension(setPhoneExtensions) != null 
+            ? getRelatedUsersByExtension(setPhoneExtensions) 
+            : new List<User>();
 
         system.debug('returnedAccount'+ returnedAccount.size());
         system.debug('returnedLead'+ returnedLead.size());
@@ -524,9 +527,18 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         }
 
         if(returnedUser.size() > 0){
-            for(User u: ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats)){
+            for(User u: returnedUser){
                 if(u != null){
                     phoneToUserIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(u.phone), u);
+                }
+            }
+        }
+
+         if(returnedUserExtension.size() > 0){
+            for(User u: returnedUserExtension){
+                if(u.extension != null){
+                    system.debug('Extension: '+ u.extension + 'for user:'+ u.name);
+                    phoneToUserIdMap.put(u.Extension, u);
                 }
             }
         }
@@ -578,6 +590,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                             userName = phoneToLeadIdMap.get(userId).Name;
                         }else if(phoneToUserIdMap.containsKey(userId)){
                             userName = phoneToUserIdMap.get(userId).Name;
+                            system.debug('userName: '+ userName + 'for number:' + userId);
                         }
                         else{
                             userName = userId+', ';
@@ -823,6 +836,11 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
     
         return userMap;
     }  
+
+    public static List<User> getRelatedUsersByExtension(Set<String> extension){
+        List<User> Users = [SELECT Id, Name, Phone, Extension FROM User WHERE Extension IN: extension];
+        return (Users.isEmpty()) ? null : Users; // Returns first matching users or null
+    }
     
     // Response class to handle individual call results
     public class CallResponse {

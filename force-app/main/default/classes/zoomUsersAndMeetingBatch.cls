@@ -27,6 +27,8 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
     public void execute(Database.BatchableContext bc, List<SObject> scope) {
 
         map<String, User> zoomUserIdsToUserMap = new map<String, User>();
+        set<string> userIds = new set<string>(); 
+        Map<string, Event> zoomIdToUserMap = new Map<string, Event>();
         // build zoomUserIdsToUserMap
         for(SObject u : scope){
             System.debug('scope: '+u);
@@ -34,10 +36,15 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
             System.debug('uu.Zoom_User_Id__c: '+uu.Zoom_User_Id__c);
             if(!zoomUserIdsToUserMap.containsKey(uu.Zoom_User_Id__c)){
                 zoomUserIdsToUserMap.put(uu.Zoom_User_Id__c,uu);
+                userIds.add(uu.Id);
             }
         }
         System.debug('zoomUserIdsToUserMap: '+zoomUserIdsToUserMap);
         
+        zoomIdToUserMap = getUserEvents(userIds);
+        System.debug('zoomIdToUserMap: '+zoomIdToUserMap);
+        // Get all the Zoom Users associated with the SF Users)
+
         // Fetch Recent Zoom Meetings
         // Map<String,List<ZoomMeetingTranscriptService.RecordingFile>> 
         userToTranscriptFileMap = ZoomMeetingTranscriptService.getRecentMeetings(token, zoomUserIdsToUserMap);
@@ -48,14 +55,22 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
 
         set<String> meetingIds = new set<String>();
 
-        for(string zoomId: userToTranscriptFileMap.keySet()){
-            for(ZoomMeetingTranscriptService.RecordingFile url: userToTranscriptFileMap.get(zoomId)){
+        for(string key: userToTranscriptFileMap.keySet()){
+            List<String> parts = key.split('#');
+            String zoomId = parts.size() > 0 ? parts[0] : '';
+            String zoomMeetingId = parts.size() > 1 ? parts[1] : '';
+            for(ZoomMeetingTranscriptService.RecordingFile url: userToTranscriptFileMap.get(key)){
                 meetingIds.add(url.meeting_id);
+                system.debug('ZOOM MEETING ID: '+ url.id);
                 // Get Transcripts from Zoom
                 string transcript = ZoomMeetingTranscriptService.fetchTranscriptFromZoom(url.download_url, token);
                 List<Meeting_Transcript__c> transcriptsToAdd =  ZoomMeetingTranscriptService.processTranscript(transcript, url.meeting_id, zoomUserIdsToUserMap.get(zoomId).Id);
                 for(Meeting_Transcript__c meetingTranscript : transcriptsToAdd){
-                    // meetingTranscript.OwnerId = queueId;
+                    system.debug('meetingTranscript: '+ meetingTranscript);
+                    if (zoomIdToUserMap.containsKey(zoomMeetingId) && zoomIdToUserMap.get(zoomMeetingId).WhoId != null && String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhoId).startsWith('003')) {
+                        meetingTranscript.Contact__c = zoomIdToUserMap.get(zoomMeetingId).WhoId;
+                    }
+                    meetingTranscript.Zoom_Event_Id__c = zoomMeetingId;
                     meetingTranscriptsToInsert.add(meetingTranscript);
                 }
             }
@@ -84,6 +99,28 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
         System.debug('FINISH userToTranscriptFileMap: '+userToTranscriptFileMap);
         System.debug('FINISH token: '+token);
         // Database.executeBatch(new ProcessZoomTranscriptsBatch(token, userToTranscriptFileMap), 1);
+    }
+
+     public static Map<string, Event> getUserEvents(Set<String> userIds) {
+        system.debug('IN getUserEvents - ' +userIds);
+        List<Event> events = [SELECT Id, OwnerId, Owner.Name, CreatedDate, WhoId, Who.name, Description, Subject FROM Event WHERE OwnerId IN: userIds AND CreatedDate = TODAY];
+        Map<string, Event> zoomIdToUserMap = new Map<string, Event>();
+        for(Event a: events){
+             system.debug('events--'+a.Who.name);
+            system.debug('events Description--'+a.Description);
+            system.debug('events Subject--'+a.Subject);
+            // Pattern 2: From "Meeting ID: 818 3207 1679"
+            Pattern textPattern = Pattern.compile('Meeting ID:\\s*(\\d{3})\\s*(\\d{4})\\s*(\\d{4})');
+            Matcher textMatcher = textPattern.matcher(a.Description);
+            if (textMatcher.find()) {
+                system.debug('###1 - '+textMatcher.group(1));
+                system.debug('###2 - '+textMatcher.group(2));
+                system.debug('###3 - '+textMatcher.group(3));
+                zoomIdToUserMap.put(textMatcher.group(1) + '' + textMatcher.group(2) + '' + textMatcher.group(3), a);
+                // return textMatcher.group(1) + textMatcher.group(2) + textMatcher.group(3);
+            }
+        }
+        return zoomIdToUserMap;
     }
 
 }

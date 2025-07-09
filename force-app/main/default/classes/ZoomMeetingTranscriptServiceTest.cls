@@ -16,6 +16,7 @@ private class ZoomMeetingTranscriptServiceTest {
                 rf.file_type = 'TRANSCRIPT';
                 rf.download_url = 'https://zoom.test/download/transcript';
                 rf.meeting_id = '1234';
+                rf.id = '1234';
                 
                 ZoomMeetingTranscriptService.Meeting meeting = new ZoomMeetingTranscriptService.Meeting();
                 meeting.recording_files = new List<ZoomMeetingTranscriptService.RecordingFile>{ rf };
@@ -118,7 +119,8 @@ private class ZoomMeetingTranscriptServiceTest {
 
         // Create a meeting transcript record
         Meeting_Transcript__c transcript = new Meeting_Transcript__c(
-            Zoom_Meeting_Id__c = '123456789'
+            Zoom_Meeting_Id__c = '123456789',
+            Zoom_Event_Id__c = '123456789'
         );
         insert transcript;
 
