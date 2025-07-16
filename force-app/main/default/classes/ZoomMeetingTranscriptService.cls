@@ -34,7 +34,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
             Meeting_Transcript__c transcriptToAdd = new Meeting_Transcript__c();
                 transcriptToAdd.Transcript__c = text;
                 transcriptToAdd.Johnson_Turner_User__c = sfUser;
-                transcriptToAdd.OwnerId = sfUser;
+                // transcriptToAdd.OwnerId = sfUser;
                 transcriptToAdd.Meeting_Date__c = Date.today();
                 transcriptToAdd.Zoom_Meeting_Id__c = zoomId;
                 transcriptToAdd.Transcript_Sequence__c = sequenceNumber;

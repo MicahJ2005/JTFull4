@@ -67,8 +67,10 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
                 List<Meeting_Transcript__c> transcriptsToAdd =  ZoomMeetingTranscriptService.processTranscript(transcript, url.meeting_id, zoomUserIdsToUserMap.get(zoomId).Id);
                 for(Meeting_Transcript__c meetingTranscript : transcriptsToAdd){
                     system.debug('meetingTranscript: '+ meetingTranscript);
+                    meetingTranscript.OwnerId = queueId;
                     if (zoomIdToUserMap.containsKey(zoomMeetingId) && zoomIdToUserMap.get(zoomMeetingId).WhoId != null && String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhoId).startsWith('003')) {
                         meetingTranscript.Contact__c = zoomIdToUserMap.get(zoomMeetingId).WhoId;
+                        meetingTranscript.OwnerId = zoomIdToUserMap.get(zoomMeetingId).OwnerId;
                     }
                     meetingTranscript.Zoom_Event_Id__c = zoomMeetingId;
                     meetingTranscriptsToInsert.add(meetingTranscript);
@@ -105,19 +107,24 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
         system.debug('IN getUserEvents - ' +userIds);
         List<Event> events = [SELECT Id, OwnerId, Owner.Name, CreatedDate, WhoId, Who.name, Description, Subject FROM Event WHERE OwnerId IN: userIds AND CreatedDate = TODAY];
         Map<string, Event> zoomIdToUserMap = new Map<string, Event>();
-        for(Event a: events){
-             system.debug('events--'+a.Who.name);
-            system.debug('events Description--'+a.Description);
-            system.debug('events Subject--'+a.Subject);
-            // Pattern 2: From "Meeting ID: 818 3207 1679"
-            Pattern textPattern = Pattern.compile('Meeting ID:\\s*(\\d{3})\\s*(\\d{4})\\s*(\\d{4})');
-            Matcher textMatcher = textPattern.matcher(a.Description);
-            if (textMatcher.find()) {
-                system.debug('###1 - '+textMatcher.group(1));
-                system.debug('###2 - '+textMatcher.group(2));
-                system.debug('###3 - '+textMatcher.group(3));
-                zoomIdToUserMap.put(textMatcher.group(1) + '' + textMatcher.group(2) + '' + textMatcher.group(3), a);
-                // return textMatcher.group(1) + textMatcher.group(2) + textMatcher.group(3);
+        if(events.size() > 0){
+            for(Event a: events){
+                // system.debug('events--'+a.Who.name);
+                // system.debug('events Description--'+a.Description);
+                // system.debug('events Subject--'+a.Subject);
+                // Pattern 2: From "Meeting ID: 818 3207 1679"
+                if(a.Description != null){
+                    system.debug('events Description--'+a.Description);
+                    Pattern textPattern = Pattern.compile('Meeting ID:\\s*(\\d{3})\\s*(\\d{4})\\s*(\\d{4})');
+                    Matcher textMatcher = textPattern.matcher(a.Description);
+                    if (textMatcher.find()) {
+                        system.debug('###1 - '+textMatcher.group(1));
+                        system.debug('###2 - '+textMatcher.group(2));
+                        system.debug('###3 - '+textMatcher.group(3));
+                        zoomIdToUserMap.put(textMatcher.group(1) + '' + textMatcher.group(2) + '' + textMatcher.group(3), a);
+                        // return textMatcher.group(1) + textMatcher.group(2) + textMatcher.group(3);
+                    }
+                }
             }
         }
         return zoomIdToUserMap;
