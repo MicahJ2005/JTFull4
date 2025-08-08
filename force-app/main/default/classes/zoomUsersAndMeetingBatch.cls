@@ -59,6 +59,7 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
             List<String> parts = key.split('#');
             String zoomId = parts.size() > 0 ? parts[0] : '';
             String zoomMeetingId = parts.size() > 1 ? parts[1] : '';
+            system.debug('zoomMeetingId IN BATCH: '+zoomMeetingId);
             for(ZoomMeetingTranscriptService.RecordingFile url: userToTranscriptFileMap.get(key)){
                 meetingIds.add(url.meeting_id);
                 system.debug('ZOOM MEETING ID: '+ url.id);
@@ -66,10 +67,25 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
                 string transcript = ZoomMeetingTranscriptService.fetchTranscriptFromZoom(url.download_url, token);
                 List<Meeting_Transcript__c> transcriptsToAdd =  ZoomMeetingTranscriptService.processTranscript(transcript, url.meeting_id, zoomUserIdsToUserMap.get(zoomId).Id);
                 for(Meeting_Transcript__c meetingTranscript : transcriptsToAdd){
-                    system.debug('meetingTranscript: '+ meetingTranscript);
+                    // system.debug('meetingTranscript: '+ meetingTranscript);
                     meetingTranscript.OwnerId = queueId;
-                    if (zoomIdToUserMap.containsKey(zoomMeetingId) && zoomIdToUserMap.get(zoomMeetingId).WhoId != null && String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhoId).startsWith('003')) {
-                        meetingTranscript.Contact__c = zoomIdToUserMap.get(zoomMeetingId).WhoId;
+                    // system.debug('zoomIdToUserMap.containsKey(zoomMeetingId): '+ zoomIdToUserMap.containsKey(zoomMeetingId) + 'with Zoom MeetingId: '+ zoomMeetingId);
+                    // system.debug('zoomIdToUserMap.get(zoomMeetingId).WhoId: '+ zoomIdToUserMap.get(zoomMeetingId).WhoId);
+                    // system.debug('zoomIdToUserMap.get(zoomMeetingId).AccountId: '+ zoomIdToUserMap.get(zoomMeetingId).AccountId);
+                    if (zoomIdToUserMap.containsKey(zoomMeetingId) && (zoomIdToUserMap.get(zoomMeetingId).WhoId != null && String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhoId).startsWith('00Q'))){
+                            meetingTranscript.Lead__c = zoomIdToUserMap.get(zoomMeetingId).WhoId;
+                            meetingTranscript.OwnerId = zoomIdToUserMap.get(zoomMeetingId).OwnerId;
+                        }
+                    else if(zoomIdToUserMap.containsKey(zoomMeetingId) && zoomIdToUserMap.get(zoomMeetingId).WhatId != null){
+                        system.debug('zoomIdToUserMap.get(zoomMeetingId).WhatId!!!!!!!!!: '+ zoomIdToUserMap.get(zoomMeetingId).WhatId);            
+                        if(String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhatId).startsWith('003')){
+                            system.debug('IN Contact WhatId: '+ zoomIdToUserMap.get(zoomMeetingId).WhatId);
+                            meetingTranscript.Contact__c = zoomIdToUserMap.get(zoomMeetingId).WhatId;
+                        }
+                        if(String.ValueOf(zoomIdToUserMap.get(zoomMeetingId).WhatId).startsWith('001')){
+                            system.debug('IN Account WhatId: '+ zoomIdToUserMap.get(zoomMeetingId).WhatId);
+                            meetingTranscript.Account__c = zoomIdToUserMap.get(zoomMeetingId).WhatId;
+                        }
                         meetingTranscript.OwnerId = zoomIdToUserMap.get(zoomMeetingId).OwnerId;
                     }
                     meetingTranscript.Zoom_Event_Id__c = zoomMeetingId;
@@ -80,20 +96,7 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
 
         set<Id> newTranscriptIds = new set<Id>();
         if(!meetingTranscriptsToInsert.isEmpty()){
-            if(!Test.isRunningTest()){
-                List<Database.SaveResult> newMeetingTranscripts = Database.insert(meetingTranscriptsToInsert);
-                for(Database.SaveResult sr : newMeetingTranscripts){
-                    if(sr.isSuccess()){
-                        newTranscriptIds.add(sr.getId());
-                    }
-                }
-            ///Start a batch Class to create related Zoom Meeting Participant Records
-            // GetMeetingRegistrantsBatch batch = new GetMeetingRegistrantsBatch(token, meetingIds, newTranscriptIds);
-            // Database.executeBatch(batch, 200); // 200 is the batch size — can be adjusted
-            
-                // GetMeetingRegistrantsQueueable job = new GetMeetingRegistrantsQueueable(token, meetingIds, newTranscriptIds);
-                // System.enqueueJob(job);
-            }
+            List<Database.SaveResult> newMeetingTranscripts = Database.insert(meetingTranscriptsToInsert);
         }
     }
     public void finish(Database.BatchableContext bc) {
@@ -105,12 +108,12 @@ public with sharing class zoomUsersAndMeetingBatch implements Database.Batchable
 
      public static Map<string, Event> getUserEvents(Set<String> userIds) {
         system.debug('IN getUserEvents - ' +userIds);
-        List<Event> events = [SELECT Id, OwnerId, Owner.Name, CreatedDate, WhoId, Who.name, Description, Subject FROM Event WHERE OwnerId IN: userIds AND CreatedDate = TODAY];
+        List<Event> events = [SELECT Id, OwnerId, Owner.Name, CreatedDate, WhoId, Who.name, WhatId, Description, Subject, AccountId FROM Event WHERE OwnerId IN: userIds AND EndDate = TODAY];
         Map<string, Event> zoomIdToUserMap = new Map<string, Event>();
         if(events.size() > 0){
             for(Event a: events){
                 // system.debug('events--'+a.Who.name);
-                // system.debug('events Description--'+a.Description);
+                // system.debug('events AccountId--'+a.AccountId);
                 // system.debug('events Subject--'+a.Subject);
                 // Pattern 2: From "Meeting ID: 818 3207 1679"
                 if(a.Description != null){

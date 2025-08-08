@@ -87,7 +87,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
         ///these Date/time parameters will give us Zoom Meetings that are within a 3hr window, starting 1 hr ago
         Datetime now = Datetime.now(); // Current datetime
         String toDateTime = now.addDays(-1).formatGMT('yyyy-MM-dd'); // 1 hour ago
-        String fromDateTime = now.addHours(-4).formatGMT('yyyy-MM-dd'); // 4 hours ago
+        String fromDateTime = now.addHours(-36).formatGMT('yyyy-MM-dd'); // 4 hours ago
         String ZOOM_MEETING_ENDPOINT = 'https://api.zoom.us/v2/users/';
         String queryParams = 'from=' + EncodingUtil.urlEncode(fromDateTime, 'UTF-8') +
                                  '&to=' + EncodingUtil.urlEncode(toDateTime, 'UTF-8') +
@@ -156,7 +156,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
         if (res.getStatusCode() == 302) {
             req.setEndpoint(res.getHeader('location'));
             res = http.send(req);
-            System.debug('res2: '+ res.getBody());
+            // System.debug('res2: '+ res.getBody());
             if (res.getStatusCode() == 200) {
                 string vttContent = extractPlainTextFromVTT(res.getBody());
                 return vttContent;
