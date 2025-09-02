@@ -25,12 +25,14 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         String salesforceJson = transformZoomData(zoomJson);
         System.debug('Salesforce JSON: ' + salesforceJson);
 
-        // Step 4: Send Call Metadata to Salesforce
-        List<CallResponse> responses = sendCallMetadataToECI(salesforceJson);
-        System.debug('Call Metadata Responses: ' + responses);
+        // if(salesforceJson != null){
+            // Step 4: Send Call Metadata to Salesforce
+            List<CallResponse> responses = sendCallMetadataToECI(salesforceJson);
+            System.debug('Call Metadata Responses: ' + responses);
 
-        // Step 5: Fetch and Upload Recordings
-        processRecordings(zoomToken, responses, fromDateTime, toDateTime);
+            // Step 5: Fetch and Upload Recordings
+            processRecordings(zoomToken, responses, fromDateTime, toDateTime);
+        // }
     }
 
     // Method to fetch OAuth token from Zoom
@@ -138,6 +140,31 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
     public static String transformZoomData(String zoomJson) {
         // Step 1: Build a Map of Salesforce User IDs
         Map<String, User> userNameToIdMap = buildUserMap();
+
+        set<string> internalUserPhoneSet = new set<string>();
+        set<string> internalUserNameSet = new set<string>();
+        // List<String> phoneFormats = new List<String>();
+        String phoneFormats;
+        for(User u: ([SELECT Id, Name, MobilePhone, phone FROM User WHERE isActive = true])){
+            
+            if(u.phone != null){
+                phoneFormats = ZoomSMSIntegration.removePhoneNumberFormat(u.phone);
+                            // system.debug('phoneFormats +'+ phoneFormats);
+                // for(string phone: phoneFormats){
+                    internalUserPhoneSet.add('+'+phoneFormats);
+                    internalUserNameSet.add(u.Name);
+                // }
+            }
+            if(u.MobilePhone != null){
+                phoneFormats = ZoomSMSIntegration.removePhoneNumberFormat(u.MobilePhone);
+                            // system.debug('phoneFormats +'+ phoneFormats);
+                // for(string phone: phoneFormats){
+                    internalUserPhoneSet.add('+'+phoneFormats);
+                    internalUserNameSet.add(u.Name);
+                // }
+            }
+            
+        }
         
         String mediaProviderId = '123';
         if(!Test.isRunningTest()){
@@ -153,25 +180,33 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
 
         map<string, List<string>> contactNameToContactMap = new map<string, List<string>>();
         for (Object log : callLogs) {
-            System.debug('log transformZoomData '+ log);
+            // System.debug('log transformZoomData '+ log);
             Map<String, Object> call = (Map<String, Object>) log;
-            System.debug('call transformZoomData '+ call);
+            // System.debug('call transformZoomData '+ call);
     
             // Map Zoom user to Contact user ID
             String userName = null;
             string contactName = null;
+            string callerName = null;
+            string calleeName = null;
     
             if (call.containsKey('caller_name') && call.get('caller_name') != null && String.valueOf(call.get('direction')).toLowerCase() == 'outbound') {
                 contactName = String.valueOf(call.get('caller_name'));
+                callerName = String.valueOf(call.get('caller_name'));
                 contactNameToContactMap.put(contactName, new List<string>());
+                // System.debug('CALLER NUMBER: '+ call.get('caller_did_number'));
             } else if (call.containsKey('direction') && String.valueOf(call.get('direction')).toLowerCase() == 'inbound' &&
                        call.containsKey('callee_name') && call.get('callee_name') != null) {
                 contactName = String.valueOf(call.get('callee_name'));
+                calleeName = String.valueOf(call.get('callee_name'));
                 contactNameToContactMap.put(contactName, new List<string>());
+                // System.debug('CALLEE NUMBER: '+ call.get('callee_did_number'));
             }
 
+            
+
             for(Account a: [SELECT Id, Phone, PersonMobilePhone, Name FROM Account WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                system.debug('ACCOUNT IN LOOP: '+ a);
+                // system.debug('ACCOUNT IN LOOP: '+ a);
                 if(a.Phone != null){
                     contactNameToContactMap.get(a.name).add(a.phone);
                 }
@@ -181,12 +216,12 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             }
 
             for(Lead a: [SELECT Id, Phone, Name FROM Lead WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                system.debug('Lead IN LOOP: '+ a);
+                // system.debug('Lead IN LOOP: '+ a);
                 contactNameToContactMap.get(a.name).add(a.phone);
             }
 
             for(Contact a: [SELECT Id, Phone, MobilePhone, Name FROM Contact WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                system.debug('Contact IN LOOP: '+ a);
+                // system.debug('Contact IN LOOP: '+ a);
                 if(a.phone != null){
                     contactNameToContactMap.get(a.name).add(a.phone);
                 }
@@ -197,9 +232,9 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         }
     /////////////
         for (Object log : callLogs) {
-            System.debug('log transformZoomData '+ log);
+            // System.debug('log transformZoomData '+ log);
             Map<String, Object> call = (Map<String, Object>) log;
-            System.debug('call transformZoomData '+ call);
+            // System.debug('call transformZoomData '+ call);
             Map<String, Object> formattedCall = new Map<String, Object>();
     
             // Skip calls under 10 seconds
@@ -272,71 +307,86 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                 continue; // Skip this record
             }
             
-            System.debug('toPhoneNumber callee_did_number: '+ call.get('callee_did_number'));
+            // System.debug('toPhoneNumber callee_did_number: '+ call.get('callee_did_number'));
             System.debug('callee_name callee_name: '+ call.get('callee_name'));
-            System.debug('fromPhoneNumber caller_did_number: '+ call.get('caller_did_number'));
+            // System.debug('fromPhoneNumber caller_did_number: '+ call.get('caller_did_number'));
             System.debug('caller_name caller_name: '+ call.get('caller_name'));
-            System.debug('direction direction: '+ call.get('direction'));
-
+            // System.debug('direction direction: '+ call.get('direction'));
+            Boolean skipThis = false;
+            if(internalUserNameSet.contains(String.valueOf(call.get('callee_name'))) && internalUserNameSet.contains(String.valueOf(call.get('caller_name')))){
+                System.debug('THIS IS AN INTERNAL CALL BETWEEN '+ call.get('caller_name') +' AND '+ call.get('callee_name') +'... Skipping this record!!!');
+            }else{
             
-            string toPhoneNumber = String.valueOf(call.get('callee_did_number'));
-            System.debug('toPhoneNumber BEFORE: '+ toPhoneNumber);
+                string toPhoneNumber = String.valueOf(call.get('callee_did_number'));
+                // System.debug('toPhoneNumber BEFORE: '+ toPhoneNumber);
+                
+                string fromPhoneNumber = String.valueOf(call.get('caller_did_number'));
+                // System.debug('fromPhoneNumber BEFORE: '+ fromPhoneNumber);
+
+                if(toPhoneNumber == null){
+                    if(contactNameToContactMap.containsKey(String.valueOf(call.get('callee_name')))){
+                        for(string s: contactNameToContactMap.get(String.valueOf(call.get('callee_name')))){
+                            toPhoneNumber = s;
+                        }
+                        
+                    }
+                    else if(userNameToIdMap.containsKey(String.valueOf(call.get('callee_name')))){
+                        if(userNameToIdMap.get(String.valueOf(call.get('callee_name'))).phone != null){
+                            toPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('callee_name'))).phone;
+                        }
+                        else{
+                            toPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('callee_name'))).MobilePhone;
+                        }
+                        
+                    }
+                
+                }
+                if(fromPhoneNumber == null){
+                    if(contactNameToContactMap.containsKey(String.valueOf(call.get('caller_name')))){
+                        // toPhoneNumber = contactNameToContactMap.get(String.valueOf(call.get('caller_name'))[0]);
+                        for(string s: contactNameToContactMap.get(String.valueOf(call.get('caller_name')))){
+                            fromPhoneNumber = s;
+                        }
+                    }
+                    else if(userNameToIdMap.containsKey(String.valueOf(call.get('caller_name')))){
+                        if(userNameToIdMap.get(String.valueOf(call.get('caller_name'))).phone != null){
+                            fromPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('caller_name'))).phone;
+                        }
+                        else{
+                            fromPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('caller_name'))).MobilePhone;
+                        }
+                    }
+                }
+
+                
+                System.debug('internalUserPhoneSet: '+ internalUserPhoneSet);
+                if( toPhoneNumber != null && fromPhoneNumber != null){
+                    System.debug('toPhoneNumber AFTER: '+ toPhoneNumber);
+                    System.debug('fromPhoneNumber AFTER: '+ fromPhoneNumber);
+                    System.debug('toPhoneNumber LENGTH AFTER: '+ toPhoneNumber.length());
+                    System.debug('fromPhoneNumber LENGTH AFTER: '+ fromPhoneNumber.length());
+                    if((internalUserPhoneSet.contains(toPhoneNumber) || toPhoneNumber.length() == 4) && 
+                        (internalUserPhoneSet.contains(fromPhoneNumber) || fromPhoneNumber.length() == 4)){
+                        system.debug('To: ' +toPhoneNumber+' and FROM: ' +fromPhoneNumber +' are both internal... WE CAN SKIP THS CONVO');
+                    }
+                }
+                
+                
+                // Map other fields
+                // formattedCall.put('toPhoneNumber', call.get('callee_did_number'));
+                // formattedCall.put('fromPhoneNumber', call.get('caller_did_number'));
+                if(toPhoneNumber != null && toPhoneNumber != '' && fromPhoneNumber != null && fromPhoneNumber != ''){
+                    formattedCall.put('toPhoneNumber', toPhoneNumber);
+                    formattedCall.put('fromPhoneNumber', fromPhoneNumber);
+                    formattedCall.put('recordingDuration', call.get('duration'));
+                    formattedCall.put('externalId', call.get('call_id'));
+                    formattedCall.put('recordingFormat', 'mp3'); // Assume recordings are in mp3 format
+                    formattedCall.put('mediaProviderId', mediaProviderId); 
             
-            string fromPhoneNumber = String.valueOf(call.get('caller_did_number'));
-            System.debug('fromPhoneNumber BEFORE: '+ fromPhoneNumber);
-
-            if(toPhoneNumber == null){
-                if(contactNameToContactMap.containsKey(String.valueOf(call.get('callee_name')))){
-                    for(string s: contactNameToContactMap.get(String.valueOf(call.get('callee_name')))){
-                        toPhoneNumber = s;
-                    }
-                    
-                }
-                else if(userNameToIdMap.containsKey(String.valueOf(call.get('callee_name')))){
-                    if(userNameToIdMap.get(String.valueOf(call.get('callee_name'))).phone != null){
-                        toPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('callee_name'))).phone;
-                    }
-                    else{
-                        toPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('callee_name'))).MobilePhone;
-                    }
-                    
-                }
-               
-            }
-            if(fromPhoneNumber == null){
-                if(contactNameToContactMap.containsKey(String.valueOf(call.get('caller_name')))){
-                    // toPhoneNumber = contactNameToContactMap.get(String.valueOf(call.get('caller_name'))[0]);
-                    for(string s: contactNameToContactMap.get(String.valueOf(call.get('caller_name')))){
-                        fromPhoneNumber = s;
-                    }
-                }
-                else if(userNameToIdMap.containsKey(String.valueOf(call.get('caller_name')))){
-                    if(userNameToIdMap.get(String.valueOf(call.get('caller_name'))).phone != null){
-                        fromPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('caller_name'))).phone;
-                    }
-                    else{
-                        fromPhoneNumber = userNameToIdMap.get(String.valueOf(call.get('caller_name'))).MobilePhone;
-                    }
+                    // Add transformed call to the list
+                    formattedCalls.add(formattedCall);
                 }
             }
-
-            System.debug('toPhoneNumber AFTER: '+ toPhoneNumber);
-            System.debug('fromPhoneNumber AFTER: '+ fromPhoneNumber);
-            // Map other fields
-            // formattedCall.put('toPhoneNumber', call.get('callee_did_number'));
-            // formattedCall.put('fromPhoneNumber', call.get('caller_did_number'));
-            if(toPhoneNumber != null && toPhoneNumber != '' && fromPhoneNumber != null && fromPhoneNumber != ''){
-                formattedCall.put('toPhoneNumber', toPhoneNumber);
-                formattedCall.put('fromPhoneNumber', fromPhoneNumber);
-                formattedCall.put('recordingDuration', call.get('duration'));
-                formattedCall.put('externalId', call.get('call_id'));
-                formattedCall.put('recordingFormat', 'mp3'); // Assume recordings are in mp3 format
-                formattedCall.put('mediaProviderId', mediaProviderId); 
-        
-                // Add transformed call to the list
-                formattedCalls.add(formattedCall);
-            }
-           
         }
     
         // Create output map
