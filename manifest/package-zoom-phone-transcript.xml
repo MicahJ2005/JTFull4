@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>ZoomPhoneIntegration</members>
+        <members>ZoomPhoneIntegrationTest</members>
+        <members>ZoomPhoneIntegrationQueueable</members>
+        <members>ZoomPhoneRecordingScanQueueable</members>
+        <members>ZoomPhoneTranscriptBuildQueueable</members>
+        <members>ZoomMeetingTranscriptService</members>
+        <members>ZoomMeetingTranscriptServiceTest</members>
+        <members>ZoomMeetingTranscriptSchedulable</members>
+        <members>zoomUsersAndMeetingBatch</members>
+        <members>zoomUsersAndMeetingBatchTest</members>
+        <members>ZoomTranscriptFetchQueueable</members>
+        <members>ZoomSMSIntegration</members>
+        <members>ZoomSMSIntegrationTest</members>
+        <members>ZoomIntegrationErrorLogger</members>
+        <members>ZoomIntegrationErrorLoggerTest</members>
+        <name>ApexClass</name>
+    </types>
+    <types>
+        <members>Zoom_Integration_Error__c</members>
+        <name>CustomObject</name>
+    </types>
+    <version>63.0</version>
+</Package>

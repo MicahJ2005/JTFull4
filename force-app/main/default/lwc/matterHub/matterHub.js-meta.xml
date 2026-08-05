@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>61.0</apiVersion>
+    <isExposed>true</isExposed>
+    <masterLabel>My Matter Hub</masterLabel>
+    <description>Client portal page for a Matter: questionnaire, case summary, progress tracker, documents, tasks, appointments and legal team.</description>
+    <targets>
+        <target>lightningCommunity__Page</target>
+        <target>lightningCommunity__Default</target>
+        <target>lightning__RecordPage</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightningCommunity__Default">
+            <property name="recordId"
+                      type="String"
+                      label="Record Id"
+                      description="Matter (AcctSeed__Project__c) record Id. Use {!recordId} on a record page."
+                      default="{!recordId}"/>
+            <property name="matterTitleOverride"
+                      type="String"
+                      label="Matter Title (optional)"
+                      description="Overrides the header title, e.g. 'My Family Law Matter'. Leave blank to use the Matter name."/>
+            <property name="caseSummaryText"
+                      type="String"
+                      label="What's Happening Text (predetermined)"
+                      description="Static summary shown under 'What's Happening In My Case'."/>
+            <property name="whatsNextText"
+                      type="String"
+                      label="What's Next Text (predetermined)"
+                      description="Static text shown under 'What's Next?'."/>
+            <property name="maxTasks"
+                      type="Integer"
+                      label="Max Tasks Shown"
+                      default="3"/>
+            <property name="maxAppointments"
+                      type="Integer"
+                      label="Max Appointments Shown"
+                      default="3"/>
+            <property name="showAllTasks"
+                      type="Boolean"
+                      label="Show All Tasks (ignore client visibility)"
+                      description="Unchecked (default) shows only Tasks marked 'Visible in Self-Service'. Check to show all open matter tasks."
+                      default="false"/>
+
+            <property name="showLegalTeam"
+                      type="Boolean"
+                      label="Embed Legal Team Component"
+                      description="If checked, embeds the existing teamMemberMatterLWC. If unchecked, shows a 'View Your Team' button."
+                      default="false"/>
+            <property name="taskTrackerPageName"
+                      type="String"
+                      label="Task Tracker Page API Name"
+                      default="Task_Tracker__c"/>
+            <property name="calendarPageName"
+                      type="String"
+                      label="Calendar Page API Name"
+                      default="My_Calendar__c"/>
+            <property name="legalTeamPageName"
+                      type="String"
+                      label="Legal Team Page API Name"
+                      default="My_Legal_Team__c"/>
+        </targetConfig>
+        <targetConfig targets="lightning__RecordPage">
+            <property name="recordId" type="String" label="Record Id" default="{!recordId}"/>
+            <property name="matterTitleOverride" type="String" label="Matter Title (optional)"/>
+            <property name="caseSummaryText" type="String" label="What's Happening Text (predetermined)"/>
+            <property name="whatsNextText" type="String" label="What's Next Text (predetermined)"/>
+            <property name="maxTasks" type="Integer" label="Max Tasks Shown" default="3"/>
+            <property name="maxAppointments" type="Integer" label="Max Appointments Shown" default="3"/>
+            <property name="showAllTasks" type="Boolean" label="Show All Tasks (ignore client visibility)" default="false"/>
+
+            <property name="showLegalTeam" type="Boolean" label="Embed Legal Team Component" default="false"/>
+            <property name="taskTrackerPageName" type="String" label="Task Tracker Page API Name" default="Task_Tracker__c"/>
+            <property name="calendarPageName" type="String" label="Calendar Page API Name" default="My_Calendar__c"/>
+            <property name="legalTeamPageName" type="String" label="Legal Team Page API Name" default="My_Legal_Team__c"/>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>

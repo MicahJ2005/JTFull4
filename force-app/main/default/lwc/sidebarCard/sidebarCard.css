@@ -1,0 +1,96 @@
+.card-container {
+    background: #ffffff;
+    border: 1px solid #e5e5e5; 
+    border-left: 5px solid transparent; 
+    border-radius: 0px; 
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    display: flex;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 100px;
+}
+
+.card-container:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.accent-bar {
+    display: none; 
+}
+
+.card-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 15px 20px;
+}
+
+.icon-wrapper {
+    margin-right: 15px;
+    --slds-c-icon-color-foreground-default: #005587;
+    --slds-c-icon-color-background: transparent; 
+}
+
+.text-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.title {
+    font-family: 'Georgia', 'Times New Roman', serif; 
+    font-size: 18px;
+    font-weight: 600; 
+    color: #333;
+    margin: 0 0 8px 0;
+    line-height: 1.2;
+}
+
+.action-btn {
+    background-color: #005587; 
+    color: white;
+    border: none;
+    padding: 6px 20px;
+    border-radius: 50px; 
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    width: fit-content;
+    text-transform: none; 
+    box-shadow: 0 2px 4px rgba(0,85,135,0.3);
+}
+
+.action-btn:hover {
+    background-color: #003e61;
+}
+
+.subtitle {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0;
+    color: #F2994A; 
+}
+
+.arrow-wrapper {
+    color: #999;
+    margin-left: 10px;
+}
+
+.custom-icon-img {
+    width: 40px;  /* Ajusta este tamaño según tus iconos */
+    height: 40px;
+    object-fit: contain;
+}
+
+/* Ajuste para que el icono tenga espacio correcto */
+.icon-wrapper {
+    margin-right: 15px;
+    min-width: 40px; /* Reserva el espacio */
+    display: flex;
+    justify-content: center;
+}

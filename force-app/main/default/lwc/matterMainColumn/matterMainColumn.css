@@ -1,0 +1,141 @@
+/* COLORES Y VARIABLES */
+:host {
+    --color-dark-teal: #005A70; /* Color del Header y Borde Izquierdo */
+    --color-btn-teal: #007C92;  /* Color de botones */
+    --color-phase-done: #005A70; /* Fase 1 (Completada) */
+    --color-phase-current: #EAA844; /* Fase 2 (Actual - Amarillo) */
+    --color-phase-future: #E5E5E5; /* Fase 3, 4 (Futuro - Gris) */
+    --font-serif: 'Georgia', 'Times New Roman', serif; /* Fuente elegante */
+}
+
+/* 1. HEADER (La barra azul superior con la flecha) */
+.main-header {
+    background-color: var(--color-dark-teal);
+    color: white;
+    padding: 15px 20px;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: var(--lwc-fontFamily, sans-serif); /* Fuente sans-serif para el header */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 4px 4px 0 0; /* Solo bordes superiores redondeados */
+    margin-bottom: 0; /* Pegado al contenido si quisieras, o con margen */
+}
+
+.header-arrow {
+    font-size: 12px;
+}
+
+/* 2. CONTENEDORES DE BLOQUE (El borde izquierdo grueso) */
+.content-block {
+    background: white;
+    border-left: 7px solid var(--color-dark-teal); /* EL BORDE GRUESO CLAVE */
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08); /* Sombra sutil */
+}
+
+/* Títulos elegantes (Serif) */
+.serif-title {
+    font-family: var(--font-serif);
+    font-size: 24px;
+    color: #222;
+    margin-bottom: 10px;
+    font-weight: 400; /* Letra normal, no bold */
+}
+
+.body-text {
+    font-size: 14px;
+    color: #444;
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+
+/* 3. BOTONES REDONDEADOS (Pill shape) */
+.btn-pill {
+    background-color: var(--color-btn-teal);
+    color: white;
+    border: none;
+    padding: 8px 30px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-pill:hover {
+    background-color: #004555;
+}
+
+/* 4. CUSTOM PROGRESS TRACKER (Flechas de colores) */
+.tracker-container {
+    display: flex;
+    width: 100%;
+    margin: 20px 0;
+    overflow: hidden;
+    border-radius: 20px; /* Bordes redondeados en los extremos */
+}
+
+.tracker-step {
+    flex: 1;
+    position: relative;
+    padding: 10px 5px;
+    text-align: center;
+    color: white;
+    font-weight: 500;
+    font-size: 14px;
+    margin-right: 2px; /* Pequeña separación */
+    clip-path: polygon(90% 0, 100% 50%, 90% 100%, 0% 100%, 10% 50%, 0% 0%); /* Forma de flecha */
+}
+
+/* Ajuste para el primero y el último para que se vean rectos en los bordes */
+.tracker-step:first-child {
+    clip-path: polygon(90% 0, 100% 50%, 90% 100%, 0% 100%, 0% 50%, 0% 0%);
+    border-top-left-radius: 20px;
+    border-bottom-left-radius: 20px;
+}
+.tracker-step:last-child {
+    clip-path: polygon(100% 0, 100% 50%, 100% 100%, 0% 100%, 10% 50%, 0% 0%);
+    border-top-right-radius: 20px;
+    border-bottom-right-radius: 20px;
+    margin-right: 0;
+}
+
+/* Colores de las fases */
+.step-done {
+    background-color: var(--color-phase-done);
+}
+.step-current {
+    background-color: var(--color-phase-current);
+    color: #222; /* Texto oscuro para contraste en amarillo */
+}
+.step-future {
+    background-color: var(--color-phase-future);
+    color: #888;
+    border: 1px solid #ddd; /* Borde sutil */
+}
+
+/* Subtítulo de fase */
+.phase-subtitle {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    margin-top: 15px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+    display: inline-block;
+}
+
+/* 5. BOX / DOCUMENTOS */
+.search-container {
+    display: flex;
+    align-items: center;
+    background: #f3f3f3;
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+.box-logo {
+    height: 20px;
+    margin-left: 10px;
+}

@@ -1,0 +1,70 @@
+<template>
+<div class="profile-root">
+<div class="left-column">
+<div class="brand">
+<h1 class="name">{name}</h1>
+<div class="title">{title}</div>
+</div>
+
+
+<div class="photo-wrapper">
+<!-- Photo comes from a static resource referenced in the JS file -->
+<img src={photoUrl} alt="Profile photo" class="profile-photo"/>
+</div>
+
+
+<section class="panel strengths">
+<h3>Strengths</h3>
+<template for:each={strengths} for:item="s">
+<div key={s.label} class="strength-row">
+<div class="strength-label">{s.label}</div>
+<div class="dots">
+<template for:each={s.levelArray} for:item="d" for:index="index">
+    <span key={index} class={d.class}></span>
+</template>
+</div>
+</div>
+</template>
+<div class="small-note">* strengths defined by the StrengthsFinder Test</div>
+</section>
+
+
+<section class="panel hobbies">
+<h3>Hobbies</h3>
+<ul>
+<template for:each={hobbies} for:item="h">
+<li key={h}>{h}</li>
+</template>
+</ul>
+</section>
+
+
+<section class="panel fun-fact">
+<h3>Fun Fact About Me</h3>
+<div>I am a professionally trained opera singer</div>
+</section>
+</div>
+
+
+<div class="right-column">
+<div class="section bio">
+<div class="section-title">Bio</div>
+<div class="section-content">{bio}</div>
+</div>
+
+
+<div class="section approach">
+<div class="section-title">Approach</div>
+<div class="section-content">{approach}</div>
+</div>
+
+
+<div class="section stories">
+<div class="section-title">Client Stories</div>
+<template for:each={clientStories} for:item="cs">
+<div key={cs.author} class="quote">
+<div class="quote-text">“{cs.text}”</div>
+<div class="quote-author">- {cs.author}</div>
+</div>
+</div>
+</template>

@@ -1,0 +1,83 @@
+:host {
+    --jt-teal: #1e5a7d;
+    --jt-teal-dark: #174a67;
+    --jt-gold: #d4a017;
+    --jt-bg: #f3f3f3;
+    --jt-text: #3e3e3c;
+}
+
+.tt-hub { background-color: var(--jt-bg); padding: 1rem; }
+
+/* Collapsible header */
+.tt-header {
+    background: linear-gradient(135deg, var(--jt-teal) 0%, #2d6f8f 100%);
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+.tt-header:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.tt-title { color: #fff; font-size: 1.5rem; font-weight: 700; margin: 0; letter-spacing: 0.5px; }
+.tt-toggle { --slds-c-icon-color-foreground-default: #ffffff; }
+
+/* Layout */
+.tt-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    align-items: start;
+}
+.tt-main, .tt-side { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+
+/* Cards */
+.tt-card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.tt-card-title {
+    font-size: 1.35rem; font-weight: 700; color: #000; margin: 0 0 0.75rem 0;
+    border-bottom: 2px solid var(--jt-teal); padding-bottom: 0.5rem;
+}
+.tt-card-text { color: var(--jt-text); line-height: 1.6; font-size: 0.95rem; }
+.tt-muted { color: #888; font-style: italic; }
+
+/* Progress bar */
+.tt-progress-wrap { margin: 1.25rem 0; }
+.tt-progress-bar {
+    width: 100%; height: 18px; background: #e3e9ed; border-radius: 12px; overflow: hidden;
+}
+.tt-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--jt-teal) 0%, #2d6f8f 100%);
+    border-radius: 12px;
+    transition: width 0.5s ease;
+}
+.tt-progress-meta { display: flex; justify-content: space-between; margin-top: 0.5rem; }
+.tt-progress-pct { font-weight: 700; color: var(--jt-teal); font-size: 0.95rem; }
+.tt-progress-count { color: var(--jt-text); font-size: 0.85rem; }
+
+/* Embed */
+.tt-embed { border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden; margin-top: 1rem; }
+.tt-embed iframe { display: block; border: 0; }
+
+/* Tasks */
+.tt-task-list { list-style: none; margin: 0; padding: 0; }
+.tt-task-item {
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    padding: 0.6rem 0; border-bottom: 1px solid #eee;
+}
+.tt-task-item:last-child { border-bottom: none; }
+.tt-task-check { margin-top: 0.2rem; width: 16px; height: 16px; accent-color: var(--jt-teal); cursor: not-allowed; }
+.tt-task-body { display: flex; flex-direction: column; }
+.tt-task-subject { color: #000; font-size: 0.95rem; font-weight: 500; }
+.tt-task-due {
+    font-size: 0.75rem; color: var(--jt-teal); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.tt-task-due[data-overdue="true"] { color: #c23934; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .tt-layout { grid-template-columns: 1fr; }
+}

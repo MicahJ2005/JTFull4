@@ -1,0 +1,43 @@
+.container {
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-top: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.container:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.header {
+    padding: 15px 20px 5px 20px;
+}
+
+.title {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 20px;
+    color: #222;
+    margin: 0;
+    font-weight: 500;
+}
+
+.content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 20px 20px 20px;
+}
+
+.item-name {
+    font-size: 14px;
+    color: #666;
+    font-family: 'Salesforce Sans', Arial, sans-serif;
+}
+
+.arrow-icon {
+    --slds-c-icon-color-foreground-default: #999;
+}

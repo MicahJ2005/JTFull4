@@ -1,0 +1,25 @@
+<template>
+    <div class="matter-container">
+        <h2 class="section-header">My Current Matters</h2>
+
+        <template if:true={matters.data}>
+            <ul class="matter-ul">
+                <template for:each={matters.data} for:item="matter">
+                    <li key={matter.Id}>
+                        <a onclick={navigateToRecord} data-record-id={matter.Id} class="matter-link">
+                            {matter.Name}
+                        </a>
+                    </li>
+                </template>
+            </ul>
+        </template>
+
+        <template if:false={hasMatters}>
+            <p class="no-data">You have no active matters at this time.</p>
+        </template>
+
+        <button class="view-all-btn" onclick={navigateToListView}>
+            View My Matters
+        </button>
+    </div>
+</template>

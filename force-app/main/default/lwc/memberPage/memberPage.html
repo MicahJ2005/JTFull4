@@ -1,0 +1,116 @@
+<template>
+    <!-- Loading State -->
+    <template if:true={isLoading}>
+        <div class="slds-text-align_center slds-p-around_medium">
+            <lightning-spinner alternative-text="Loading profile..."></lightning-spinner>
+        </div>
+    </template>
+
+    <!-- Error State -->
+    <template if:true={error}>
+        <div class="slds-text-align_center slds-p-around_medium">
+            <p class="slds-text-color_error">Error loading profile</p>
+        </div>
+    </template>
+
+    <!-- Member Profile View -->
+    <template if:true={hasMember}>
+        <div class="member-detail">
+            <div class="detail-container">
+                <!-- Left Panel -->
+                <div class="left-panel">
+                    <!-- Header -->
+                    <div class="detail-header">
+                        <h1 class="detail-name">{member.Name}</h1>
+                        <p class="detail-title">{displayTitle}</p>
+                    </div>
+
+                    <!-- Profile Image -->
+                    <div class="profile-image-container">
+                        <img src={profileImage} 
+                             alt={member.Name}
+                             class="profile-image"/>
+                    </div>
+
+                    <!-- Strengths -->
+                    <template if:true={memberStrengths}>
+                        <div class="strengths-section">
+                            <h2 class="section-title">Strengths</h2>
+                            <template for:each={memberStrengths} for:item="strength">
+                                <div key={strength} class="strength-item">
+                                    <span class="strength-label">{strength}</span>
+                                </div>
+                            </template>
+                            <p class="strengths-note">* strengths defined by the StrengthsFinder Test</p>
+                        </div>
+                    </template>
+
+                    <!-- Hobbies -->
+                    <template if:true={hasHobbies}>
+                        <div class="hobbies-section">
+                            <h2 class="section-title">Hobbies</h2>
+                            <ul class="hobbies-list">
+                                <template for:each={memberHobbies} for:item="hobby">
+                                    <li key={hobby} class="hobby-item">{hobby}</li>
+                                </template>
+                            </ul>
+                        </div>
+                    </template>
+
+                    <!-- Fun Fact -->
+                    <template if:true={member.FunFact}>
+                        <div class="funfact-section">
+                            <h2 class="section-title">Fun Fact About Me</h2>
+                            <p class="funfact-text">{member.FunFact}</p>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Right Panel -->
+                <div class="right-panel">
+                    <!-- Bio -->
+                    <template if:true={member.UserBio}>
+                        <div class="bio-section">
+                            <h2 class="section-title-white">Bio</h2>
+                            <div class="bio-content" lwc:dom="manual"></div>
+                        </div>
+                    </template>
+
+                    <!-- Approach -->
+                    <template if:true={member.UserApproach}>
+                        <div class="approach-section">
+                            <h2 class="section-title-white">Approach</h2>
+                            <div class="approach-content" lwc:dom="manual"></div>
+                        </div>
+                    </template>
+
+                    <!-- Client Stories -->
+                    <template if:true={hasClientStories}>
+                        <div class="stories-section">
+                            <h2 class="section-title-white">Client Stories</h2>
+                            <div class="stories-content">
+                                <template for:each={clientStories} for:item="story">
+                                    <div key={story.text} class="story-item">
+                                        <div class="quote-mark">"</div>
+                                        <p class="story-text">{story.text}</p>
+                                        <p class="story-author">- {story.author}</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Back Button -->
+                    <div class="back-button-container">
+                        <lightning-button 
+                            label="Back to My Team" 
+                            variant="brand"
+                            class="back-button"
+                            onclick={handleBackToTeam}>
+                        </lightning-button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+</template>

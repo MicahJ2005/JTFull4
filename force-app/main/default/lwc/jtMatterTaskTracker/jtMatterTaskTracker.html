@@ -1,0 +1,81 @@
+<template>
+    <div class="tt-hub">
+
+        <!-- Collapsible matter header -->
+        <div class="tt-header" onclick={handleToggle}>
+            <h2 class="tt-title">{matterTitle}</h2>
+            <lightning-icon icon-name={toggleIcon} size="small" class="tt-toggle"></lightning-icon>
+        </div>
+
+        <template if:true={isExpanded}>
+            <div class="tt-layout">
+
+                <!-- LEFT: Task Tracker -->
+                <div class="tt-main">
+                    <div class="tt-card">
+                        <h3 class="tt-card-title">Task Tracker</h3>
+                        <p class="tt-card-text">
+                            Track the milestones in your matter below. This shows where you are in the
+                            process and what has been completed so far.
+                        </p>
+
+                        <!-- Overall progress (from Matter rollups) -->
+                        <template if:true={hasProgress}>
+                            <div class="tt-progress-wrap">
+                                <div class="tt-progress-bar">
+                                    <div class="tt-progress-fill" lwc:ref="fillEl"></div>
+                                </div>
+                                <div class="tt-progress-meta">
+                                    <span class="tt-progress-pct">{percent}% complete</span>
+                                    <span class="tt-progress-count">{progressLabel}</span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Detailed tracker visualization (embed) -->
+                        <template if:true={hasEmbed}>
+                            <div class="tt-embed">
+                                <iframe src={trackerEmbedUrl} title="Task Tracker"
+                                    width="100%" height="600" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                        </template>
+                        <template if:false={hasEmbed}>
+                            <p class="tt-card-text tt-muted">
+                                Your detailed task tracker will appear here once it has been connected by your team.
+                            </p>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- RIGHT: My Current Tasks (full list) -->
+                <div class="tt-side">
+                    <div class="tt-card">
+                        <h3 class="tt-card-title">My Current Tasks</h3>
+                        <template if:true={hasTasks}>
+                            <ul class="tt-task-list">
+                                <template for:each={tasks} for:item="task">
+                                    <li key={task.id} class="tt-task-item">
+                                        <input type="checkbox" disabled class="tt-task-check" />
+                                        <div class="tt-task-body">
+                                            <span class="tt-task-subject">{task.subject}</span>
+                                            <template if:true={task.dueLabel}>
+                                                <span class="tt-task-due" data-overdue={task.isOverdue}>
+                                                    {task.dueLabel}
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                        <template if:false={hasTasks}>
+                            <p class="tt-card-text tt-muted">
+                                You have no open tasks right now. Your team will let you know if they need anything.
+                            </p>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

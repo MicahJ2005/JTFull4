@@ -1,0 +1,67 @@
+:host {
+    display: block;
+    line-height: 0; 
+    width: 100%;
+}
+
+.hero-container {
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    
+    margin-top: -36px !important; 
+    box-shadow: 0 -5px 0 0 #005587;
+    
+    padding-top: 20px; 
+    
+    padding-left: 12%;
+    padding-right: 12%;
+    
+    min-height: 340px; 
+    display: flex;
+    align-items: center; 
+    position: relative;
+    background-color: #005587; 
+    box-sizing: border-box;
+    overflow: hidden;
+    
+    z-index: 1; 
+}
+
+.content-wrapper {
+    width: 100%;
+    max-width: 900px;
+    z-index: 1;
+}
+
+.greeting {
+    font-size: 52px; 
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 12px;
+    font-family: 'Salesforce Sans', Arial, sans-serif;
+    line-height: 1;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.subtext {
+    font-size: 16px;
+    line-height: 1.5;
+    color: #e6e6e6; 
+    font-weight: 400;
+    max-width: 700px; 
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 768px) {
+    .hero-container {
+        min-height: 250px; /* También reducido para móviles */
+        padding: 0 20px;
+    }
+    .greeting {
+        font-size: 32px;
+    }
+    .subtext {
+        font-size: 14px;
+    }
+}

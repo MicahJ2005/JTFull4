@@ -9,7 +9,7 @@
  * 1.0   02-02-2021   Revolution Group (Brian Ezell)   Initial Version
 **/
 
-public with sharing class NextStepController {
+public without sharing class NextStepController {
 
     private static Id priceBookId = Test.isRunningTest() ? 
         Test.getStandardPricebookId() :

@@ -1,0 +1,230 @@
+<template>
+    <!-- Grid View -->
+    <template if:true={showGrid}>
+        <div class="team-hub-container">
+            <!-- Loading Spinner -->
+            <template if:true={isLoading}>
+                <lightning-spinner alternative-text="Loading team members..." size="medium"></lightning-spinner>
+            </template>
+
+            <!-- Error Message -->
+            <template if:true={error}>
+                <div class="slds-box slds-theme_error slds-m-around_medium">
+                    <p>Error loading team members. Please try again later.</p>
+                </div>
+            </template>
+
+            <!-- Team Members Content -->
+            <template if:true={hasTeams}>
+                <template for:each={teamsByMatter} for:item="matter">
+                    <div key={matter.id} class="matter-section slds-m-bottom_medium">
+
+                        <!-- Section Header -->
+                        <div class="section-header" data-matter-id={matter.id} onclick={handleToggleSection}>
+                            <h2 class="section-title">
+                                {matter.title}
+                            </h2>
+                        </div>
+
+                        <!-- Team Members Cards -->
+                        <template if:true={matter.isExpanded}>
+                            <div class="team-cards-grid slds-m-top_medium">
+                                <template for:each={matter.members} for:item="member">
+                                    <div key={member.Id} class="team-member-card">
+
+                                        <!-- Profile Picture -->
+                                        <div class="profile-picture-container">
+                                            <template if:true={member.ProfilePic}>
+                                                <img src={member.ProfilePic} alt={member.Name}
+                                                    class="profile-picture" />
+                                            </template>
+                                            <template if:false={member.ProfilePic}>
+                                                <div class="profile-picture-placeholder">
+                                                    <lightning-icon icon-name="standard:avatar"
+                                                        size="large"></lightning-icon>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Member Info -->
+                                        <div class="member-info">
+                                            <h3 class="member-name">{member.Name}</h3>
+                                            <p class="member-title">{member.displayTitle}</p>
+                                        </div>
+
+                                        <!-- View Profile Button -->
+                                        <div class="button-container">
+                                            <lightning-button label="View Profile" variant="brand"
+                                                data-user-id={member.Id} onclick={handleViewProfile}
+                                                class="view-profile-btn">
+                                            </lightning-button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Contact Section -->
+                            <div class="contact-section slds-m-top_large">
+                                <div class="contact-layout">
+                                    <!-- Left Side: Text Content -->
+                                    <div class="contact-text-content">
+                                        <h3 class="contact-title">Contact My Team</h3>
+
+                                        <div class="contact-description">
+                                            <p>We are here to help. Choose one of these to communicate with your team.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Right Side: Contact Actions -->
+                                    <div class="contact-actions-grid">
+                                        <!-- Paralegal Phone Dropdown -->
+                                        <div class="contact-action-card">
+                                            <div class="contact-icon-container">
+                                                <lightning-icon icon-name="utility:call" size="medium"></lightning-icon>
+                                            </div>
+                                            <h4 class="action-title">Call my team</h4>
+                                            <div class="phone-dropdown-wrapper">
+                                                <button class="phone-dropdown-toggle" onclick={togglePhoneDropdown}>
+                                                    <span>View Phone</span>
+                                                    <lightning-icon icon-name={chevronIconName} size="x-small"
+                                                        class="chevron-icon">
+                                                    </lightning-icon>
+                                                </button>
+
+                                                <template if:true={showPhoneDropdown}>
+                                                    <div class="phone-dropdown-content">
+                                                        <template if:true={hasPhoneNumber}>
+                                                            <div class="phone-number-display">
+                                                                <lightning-icon icon-name="utility:call"
+                                                                    size="x-small"></lightning-icon>
+                                                                <span>{formattedPhone}</span>
+                                                            </div>
+                                                        </template>
+                                                        <template if:false={hasPhoneNumber}>
+                                                            <div class="phone-number-display no-phone">
+                                                                <span>No phone number available</span>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+
+                                        <!-- Schedule Phone Call -->
+                                        <template if:true={hasBillingAttorney}>
+                                            <div class="contact-action-card">
+                                                <div class="contact-icon-container">
+                                                    <lightning-icon icon-name="utility:event" size="medium"
+                                                        class="icon-blue"></lightning-icon>
+                                                </div>
+                                                <h4 class="action-title">Schedule a Call with Your Attorney</h4>
+                                                <lightning-button label="Schedule Call" variant="base"
+                                                    onclick={handleScheduleCall} class="contact-button">
+                                                </lightning-button>
+                                            </div>
+                                        </template>
+
+                                        <!-- Create Case -->
+                                        <div class="contact-action-card">
+                                            <div class="contact-icon-container">
+                                                <lightning-icon icon-name="utility:email" size="medium"
+                                                    class="icon-blue"></lightning-icon>
+                                            </div>
+                                            <h4 class="action-title">Message my team</h4>
+                                            <lightning-button label="Create Message" variant="base"
+                                                onclick={handleOpenCaseModal} class="create-message-button">
+                                            </lightning-button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </template>
+
+            <!-- Empty State -->
+            <template if:false={hasTeams}>
+                <template if:false={isLoading}>
+                    <div class="slds-box slds-theme_shade slds-text-align_center slds-m-around_medium">
+                        <p>No team members found for this record.</p>
+                    </div>
+                </template>
+            </template>
+        </div>
+    </template>
+
+    <!-- Profile View -->
+    <template if:true={showProfileView}>
+        <c-member-page record-id={selectedUserId} contact-id={contactId} onbacktoteam={handleBackToTeam}>
+        </c-member-page>
+    </template>
+
+    <!-- Case Creation Modal -->
+    <template if:true={showCaseModal}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <!-- Modal Header -->
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={handleCloseCaseModal}>
+                        <lightning-icon icon-name="utility:close" size="small"
+                            alternative-text="close"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 class="slds-modal__title slds-hyphenate">Message team</h2>
+                </header>
+
+                <!-- Modal Body -->
+                <div class="slds-modal__content slds-p-around_medium">
+                    <div class="slds-form slds-form_stacked">
+                        <!-- Subject Field -->
+                        <div class="slds-form-element">
+                            <label class="slds-form-element__label" for="case-subject">
+                                <abbr class="slds-required" title="required">* </abbr>Subject
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-input id="Message-subject" value={caseSubject} onchange={handleSubjectChange}
+                                    placeholder="Enter message subject" required>
+                                </lightning-input>
+                            </div>
+                        </div>
+
+                        <!-- Description Field -->
+                        <div class="slds-form-element slds-m-top_medium">
+                            <label class="slds-form-element__label" for="case-description">
+                                <abbr class="slds-required" title="required">* </abbr>Description
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-textarea id="Message-description" value={caseDescription}
+                                    onchange={handleDescriptionChange}
+                                    placeholder="Enter message description or your message" required>
+                                </lightning-textarea>
+                            </div>
+                        </div>
+
+                        <!-- Info Message -->
+                        <div class="slds-m-top_medium">
+                            <div class="slds-box slds-box_x-small slds-theme_info">
+                                <p class="slds-text-body_small">
+                                    This message will be sent to your team and they will respond shortly.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <footer class="slds-modal__footer">
+                    <lightning-button label="Cancel" onclick={handleCloseCaseModal} class="slds-m-right_small">
+                    </lightning-button>
+                    <lightning-button label="Create Message" variant="brand" onclick={handleCreateCase}
+                        disabled={isCreatingCase}>
+                    </lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

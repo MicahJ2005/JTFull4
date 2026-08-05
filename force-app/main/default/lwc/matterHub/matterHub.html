@@ -1,0 +1,153 @@
+<template>
+    <div class="matter-hub">
+
+        <!-- ============ Collapsible Matter Header ============ -->
+        <div class="mh-section-header" onclick={handleToggleMatter}>
+            <h2 class="mh-section-title">{matterTitle}</h2>
+            <lightning-icon icon-name={toggleIcon} size="small" class="mh-toggle-icon"></lightning-icon>
+        </div>
+
+        <template if:true={isMatterExpanded}>
+            <div class="mh-layout">
+
+                <!-- ==================== LEFT COLUMN (main content) ==================== -->
+                <div class="mh-main">
+
+                    <!-- What's Happening In My Case -->
+                    <div class="mh-card">
+                        <h3 class="mh-card-title">What's Happening In My Case</h3>
+                        <p class="mh-card-text">{caseSummaryText}</p>
+
+                        <!-- Progress Tracker -->
+                        <h4 class="mh-subheading">Progress Tracker</h4>
+                        <div class="mh-progress">
+                            <template for:each={phaseSteps} for:item="step">
+                                <div key={step.key} class={step.className}>{step.label}</div>
+                            </template>
+                        </div>
+
+                        <!-- Current Phase -->
+                        <template if:true={hasCurrentPhase}>
+                            <h4 class="mh-phase-heading">{currentPhaseHeading}</h4>
+                            <template if:true={overview.currentPhaseDescription}>
+                                <lightning-formatted-text value={overview.currentPhaseDescription}
+                                    class="mh-card-text"></lightning-formatted-text>
+                            </template>
+                        </template>
+
+                        <!-- What's Next -->
+                        <h4 class="mh-subheading">What's Next?</h4>
+                        <p class="mh-card-text">{whatsNextText}</p>
+
+                        <!-- Track My Progress -> Task Tracker page -->
+                        <div class="mh-center">
+                            <lightning-button label="Track My Progress" variant="brand"
+                                class="mh-cta" onclick={handleTrackProgress}></lightning-button>
+                        </div>
+                    </div>
+
+                    <!-- My Documents (Box iframe) -->
+                    <div class="mh-card">
+                        <h3 class="mh-card-title">My Documents</h3>
+                        <template if:true={hasDocuments}>
+                            <div class="mh-doc-frame">
+                                <iframe src={documentsUrl} title="My Documents"
+                                    width="100%" height="450" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                        </template>
+                        <template if:false={hasDocuments}>
+                            <p class="mh-card-text mh-muted">
+                                Your secure document folder will appear here once it has been set up by your team.
+                            </p>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ==================== RIGHT COLUMN (sidebar cards) ==================== -->
+                <div class="mh-side">
+
+                    <!-- Quick action cards (your sidebarCard component) -->
+                    <template if:true={hasQuestionnaire}>
+                        <c-sidebar-card
+                            title="Client Questionnaire"
+                            icon-name="standard:question_feed"
+                            variant="button"
+                            button-label="Fill Out Questionnaire"
+                            accent-color="#1e5a7d"
+                            destination-url={questionnaireUrl}
+                            open-in-new-tab={openLinksInNewTab}>
+                        </c-sidebar-card>
+                    </template>
+
+                    <c-sidebar-card
+                        title="Calendar"
+                        icon-name="standard:event"
+                        variant="text"
+                        subtitle={appointmentSummary}
+                        accent-color="#1e5a7d"
+                        page-api-name={calendarPageName}>
+                    </c-sidebar-card>
+
+                    <template if:true={hasUploadLink}>
+                        <c-sidebar-card
+                            title="Document Uploads"
+                            icon-name="standard:file"
+                            variant="button"
+                            button-label="Upload Link"
+                            accent-color="#1e5a7d"
+                            destination-url={uploadUrl}
+                            open-in-new-tab={openLinksInNewTab}>
+                        </c-sidebar-card>
+                    </template>
+
+                    <!-- My Current Tasks -->
+                    <div class="mh-card">
+                        <h3 class="mh-card-title">My Current Tasks</h3>
+                        <template if:true={hasTasks}>
+                            <ul class="mh-task-list">
+                                <template for:each={tasks} for:item="task">
+                                    <li key={task.id} class="mh-task-item">
+                                        <input type="checkbox" disabled class="mh-task-check" />
+                                        <div class="mh-task-body">
+                                            <span class="mh-task-subject">{task.subject}</span>
+                                            <template if:true={task.dueLabel}>
+                                                <span class="mh-task-due" data-overdue={task.isOverdue}>
+                                                    {task.dueLabel}
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                            <div class="mh-link-right">
+                                <a href="javascript:void(0);" onclick={handleSeeAllTasks}>See all tasks</a>
+                            </div>
+                        </template>
+                        <template if:false={hasTasks}>
+                            <p class="mh-card-text mh-muted">
+                                You have no open tasks right now. Your team will let you know if they need anything.
+                            </p>
+                        </template>
+                    </div>
+
+                    <!-- My Legal Team -->
+                    <div class="mh-card">
+                        <h3 class="mh-card-title">My Legal Team</h3>
+                        <template if:true={showLegalTeam}>
+                            <c-team-member-matter-l-w-c record-id={recordId}></c-team-member-matter-l-w-c>
+                        </template>
+                        <template if:false={showLegalTeam}>
+                            <p class="mh-card-text mh-muted">
+                                See the attorneys and specialists working on your matter.
+                            </p>
+                            <div class="mh-center">
+                                <lightning-button label="View Your Team" variant="brand"
+                                    class="mh-cta" onclick={handleViewTeamPage}></lightning-button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

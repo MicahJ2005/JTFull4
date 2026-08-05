@@ -71,7 +71,7 @@
             </tr>
             <tr>
                 <td class="cls_003">
-                    <apex:outputText value="Suite 206" />
+                    <apex:outputText value="Suite 102" />
                 </td>
             </tr>
             <tr>

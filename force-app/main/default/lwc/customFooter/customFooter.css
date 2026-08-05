@@ -1,0 +1,121 @@
+.footer-wrapper {
+    background-color: #005587; /* Same Petrol Blue */
+    color: white;
+    width: 100vw;
+    margin-left: calc(-50vw + 50%); /* Force full width */
+    padding: 60px 0 40px 0;
+    font-family: 'Salesforce Sans', Arial, sans-serif;
+}
+
+.footer-content {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.columns-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-bottom: 40px;
+    border-right: 1px solid rgba(255,255,255,0.3); /* Thin line separator before logo */
+    padding-right: 40px;
+}
+
+.col {
+    flex: 1;
+    min-width: 200px;
+    margin-bottom: 20px;
+}
+
+.col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.col li {
+    margin-bottom: 12px;
+}
+
+.col a {
+    color: white;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: opacity 0.2s;
+}
+
+.col a:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+
+/* Logo Section Specifics */
+.logo-col {
+    flex: 0 0 auto; /* Don't stretch */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-left: 1px solid rgba(255,255,255,0.3); /* Vertical line */
+    padding-left: 60px;
+    margin-left: -1px; /* Overlap border */
+}
+
+.logo-circle {
+    background: white;
+    color: #005587;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 24px;
+    font-family: serif;
+    margin-bottom: 15px;
+}
+
+.hours-box {
+    background: white;
+    color: #005587;
+    padding: 8px 15px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.4;
+    min-width: 180px;
+}
+
+.footer-bottom {
+    text-align: center;
+    font-size: 11px;
+    color: rgba(255,255,255,0.7);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 20px;
+}
+
+.footer-bottom p {
+    margin: 5px 0;
+    font-style: italic;
+}
+
+@media screen and (max-width: 768px) {
+    .columns-container {
+        flex-direction: column;
+        border: none;
+        padding: 0;
+    }
+    .logo-col {
+        border: none;
+        padding: 20px 0;
+        border-top: 1px solid rgba(255,255,255,0.2);
+        width: 100%;
+    }
+    .col {
+        text-align: center;
+    }
+}

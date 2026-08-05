@@ -1,0 +1,337 @@
+<template>
+    <div class="comm-hub">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             TOOLBAR
+        ════════════════════════════════════════════════════════════ -->
+        <div class="toolbar">
+
+            <!-- Row 1: search · filter chips · counts -->
+            <div class="toolbar-row1">
+
+                <div class="search-wrap">
+                    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input
+                        type="text"
+                        class="search-input"
+                        placeholder="Search by subject, sender, recipient..."
+                        value={search}
+                        oninput={handleSearchInput}
+                    />
+                    <template if:true={search}>
+                        <button class="search-clear" onclick={clearSearch} title="Clear">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="filter-chips">
+                    <template for:each={filterOptions} for:item="f">
+                        <button key={f.value} class={f.cssClass} onclick={handleFilterClick} data-value={f.value}>{f.label}</button>
+                    </template>
+                </div>
+
+                <div class="count-badges">
+                    <span class="count-total">{counts.total} total</span>
+                    <template if:true={counts.EMAIL}><span class="count-sep">·</span><span>{counts.EMAIL} emails</span></template>
+                    <template if:true={counts.CALL}><span class="count-sep">·</span><span>{counts.CALL} calls</span></template>
+                    <template if:true={counts.TEXT}><span class="count-sep">·</span><span>{counts.TEXT} texts</span></template>
+                    <template if:true={counts.MEETING}><span class="count-sep">·</span><span>{counts.MEETING} meetings</span></template>
+                </div>
+            </div>
+
+            <!-- Row 2: date range — always visible -->
+            <div class="toolbar-row2">
+                <span class="date-label">From</span>
+                <div class="date-wrap">
+                    <input type="date" class="date-input" value={dateFrom} onchange={handleDateFromChange} />
+                    <template if:true={dateFrom}>
+                        <button class="date-clear" onclick={clearDateFrom}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                    </template>
+                </div>
+                <span class="date-sep">—</span>
+                <span class="date-label">To</span>
+                <div class="date-wrap">
+                    <input type="date" class="date-input" value={dateTo} onchange={handleDateToChange} />
+                    <template if:true={dateTo}>
+                        <button class="date-clear" onclick={clearDateTo}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             BODY: THREAD LIST + READING PANE
+        ════════════════════════════════════════════════════════════ -->
+        <div class="comm-body">
+
+            <!-- ── Thread List ──────────────────────────────────────── -->
+            <div class={threadListClass}>
+
+                <!-- Loading skeletons -->
+                <template if:true={isLoading}>
+                    <template for:each={skeletonRows} for:item="sk">
+                        <div key={sk} class="skeleton-row">
+                            <div class="sk-avatar"></div>
+                            <div class="sk-lines">
+                                <div class="sk-line sk-w70"></div>
+                                <div class="sk-line sk-w90"></div>
+                                <div class="sk-line sk-w50"></div>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+
+                <!-- Empty state -->
+                <template if:true={isEmpty}>
+                    <div class="list-empty">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                        <p class="list-empty-title">No communications found</p>
+                        <p class="list-empty-sub">Try adjusting your search or filters.</p>
+                    </div>
+                </template>
+
+                <!-- Thread rows -->
+                <template if:false={isLoading}>
+                    <template for:each={threadGroups} for:item="grp">
+                        <button key={grp.key} class={grp.rowClass} onclick={handleThreadClick} data-key={grp.key}>
+
+                            <!-- Avatar -->
+                            <div class="avatar-wrap">
+                                <div class={grp.avatarClass} style={grp.avatarStyle}>
+                                    <template if:true={grp.isEmail}><span>{grp.initials}</span></template>
+                                    <template if:true={grp.isCall}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12.4a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.69h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.22a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+                                    </template>
+                                    <template if:true={grp.isText}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    </template>
+                                    <template if:true={grp.isMeeting}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="m22 8-6 4 6 4V8z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+                                    </template>
+                                </div>
+                                <template if:true={grp.isEmail}>
+                                    <div class={grp.dotClass}></div>
+                                </template>
+                            </div>
+
+                            <!-- Content -->
+                            <div class="thread-content">
+                                <div class="thread-row1">
+                                    <span class="thread-from">{grp.fromName}</span>
+                                    <span class="thread-date">{grp.displayDate}</span>
+                                </div>
+                                <div class="thread-subject">{grp.subject}</div>
+                                <div class="thread-preview">{grp.bodyPreview}</div>
+                                <div class="thread-meta">
+                                    <template if:true={grp.hasAttachment}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                    </template>
+                                    <template if:true={grp.showThreadCount}>
+                                        <span class="thread-pill">{grp.threadCountLabel}</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </button>
+                    </template>
+                </template>
+
+                <template if:true={hasMore}>
+                    <button class="load-more-btn" onclick={handleLoadMore}>Load More</button>
+                </template>
+            </div>
+
+            <!-- ── Reading Pane ─────────────────────────────────────── -->
+            <div class={readingPaneClass}>
+
+                <!-- Nothing selected -->
+                <template if:false={selectedItem}>
+                    <div class="reading-empty">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                        <p>Select a message to read.</p>
+                    </div>
+                </template>
+
+                <template if:true={selectedItem}>
+
+                    <!-- ── EMAIL ───────────────────────────────────── -->
+                    <template if:true={selectedItem.isEmail}>
+                        <div class="reading-inner">
+                            <div class="reading-header">
+                                <template if:true={isMobile}>
+                                    <button class="back-btn" onclick={handleBack} title="Back">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                                    </button>
+                                </template>
+                                <h2 class="reading-subject">{selectedItem.subject}</h2>
+                                <div class="reading-actions">
+                                    <a href={selectedItem.replyHref} class="action-btn" title="Reply">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                                    </a>
+                                    <a href={selectedItem.replyAllHref} class="action-btn" title="Reply All">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 17 2 12 7 7"/><polyline points="12 17 7 12 12 7"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/></svg>
+                                    </a>
+                                    <a href={selectedItem.forwardHref} class="action-btn" title="Forward">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+                                    </a>
+                                    <button class="action-btn action-destructive" title="Unrelate from Matter" onclick={handleUnrelateClick}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                    <a href={selectedItem.recordUrl} target="_blank" class="action-btn" title="Open email record">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="reading-scroll">
+                                <template for:each={selectedItem.emailCards} for:item="card">
+                                    <div key={card.id} class="email-card">
+                                        <div class="email-card-top">
+                                            <div class="email-card-from-row">
+                                                <div class="email-card-avatar" style={card.avatarStyle}>{card.initials}</div>
+                                                <div class="email-card-from-detail">
+                                                    <span class="email-from-name">{card.fromName}</span>
+                                                    <span class="email-from-addr">&lt;{card.fromAddress}&gt;</span>
+                                                </div>
+                                            </div>
+                                            <span class="email-card-date">{card.displayDateTime}</span>
+                                        </div>
+                                        <div class="email-card-recip">
+                                            <span class="recip-label">To:</span> {card.toAddress}
+                                            <template if:true={card.ccAddress}>
+                                                &nbsp;&middot;&nbsp;<span class="recip-label">CC:</span> {card.ccAddress}
+                                            </template>
+                                        </div>
+                                        <div class="email-card-body">
+                                            <template if:true={card.isLoadingBody}>
+                                                <lightning-spinner size="small" alternative-text="Loading email"></lightning-spinner>
+                                            </template>
+                                            <template if:false={card.isLoadingBody}>
+                                                <template if:true={card.htmlBody}>
+                                                    <lightning-formatted-rich-text value={card.htmlBody}></lightning-formatted-rich-text>
+                                                </template>
+                                                <template if:false={card.htmlBody}>
+                                                    <pre class="email-text-pre">{card.textBody}</pre>
+                                                </template>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- ── CALL ────────────────────────────────────── -->
+                    <template if:true={selectedItem.isCall}>
+                        <div class="reading-inner">
+                            <div class="reading-header reading-header-simple">
+                                <template if:true={isMobile}>
+                                    <button class="back-btn" onclick={handleBack}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                                    </button>
+                                </template>
+                                <h2 class="reading-subject">Phone Call</h2>
+                            </div>
+                            <div class="reading-scroll">
+                                <div class="transcript-meta">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12.4a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.69h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.22a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+                                    <span>{selectedItem.displayDateTime}</span>
+                                    <span>·</span>
+                                    <span>{selectedItem.durationLabel}</span>
+                                </div>
+                                <div class="transcript-table">
+                                    <template for:each={selectedItem.transcriptLines} for:item="line">
+                                        <div key={line.idx} class={line.rowClass}>
+                                            <div class="t-speaker" style={line.speakerStyle}>{line.speaker}</div>
+                                            <div class="t-text">{line.text}</div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- ── TEXT ────────────────────────────────────── -->
+                    <template if:true={selectedItem.isText}>
+                        <div class="reading-inner">
+                            <div class="reading-header reading-header-simple">
+                                <template if:true={isMobile}>
+                                    <button class="back-btn" onclick={handleBack}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                                    </button>
+                                </template>
+                                <h2 class="reading-subject">{selectedItem.subject}</h2>
+                            </div>
+                            <div class="reading-scroll text-bubbles-scroll">
+                                <template for:each={selectedItem.textMessages} for:item="msg">
+                                    <div key={msg.id} class={msg.bubbleRowClass}>
+                                        <div class={msg.bubbleClass}>
+                                            <div class="bubble-meta">{msg.fromName} &middot; {msg.time}</div>
+                                            <div class="bubble-body">{msg.body}</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- ── MEETING ──────────────────────────────────── -->
+                    <template if:true={selectedItem.isMeeting}>
+                        <div class="reading-inner">
+                            <div class="reading-header reading-header-simple">
+                                <template if:true={isMobile}>
+                                    <button class="back-btn" onclick={handleBack}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                                    </button>
+                                </template>
+                                <h2 class="reading-subject">Zoom Meeting</h2>
+                            </div>
+                            <div class="reading-scroll">
+                                <div class="transcript-meta">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 8-6 4 6 4V8z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>
+                                    <span>{selectedItem.displayDateTime}</span>
+                                    <span>·</span>
+                                    <span>{selectedItem.durationLabel}</span>
+                                </div>
+                                <div class="transcript-table">
+                                    <template for:each={selectedItem.transcriptLines} for:item="line">
+                                        <div key={line.idx} class={line.rowClass}>
+                                            <div class="t-speaker" style={line.speakerStyle}>{line.speaker}</div>
+                                            <div class="t-text">{line.text}</div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                </template>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             UNRELATE CONFIRMATION MODAL
+        ════════════════════════════════════════════════════════════ -->
+        <template if:true={showUnrelateModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <div class="slds-modal__header">
+                        <h2 class="slds-modal__title slds-hyphenate">Unrelate this email?</h2>
+                    </div>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <p>This will remove the email from this matter&apos;s communications. The email record itself will not be deleted.</p>
+                    </div>
+                    <div class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={cancelUnrelate}></lightning-button>
+                        <lightning-button label="Unrelate" variant="destructive" onclick={confirmUnrelate}></lightning-button>
+                    </div>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+    </div>
+</template>

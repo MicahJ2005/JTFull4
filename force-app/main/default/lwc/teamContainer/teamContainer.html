@@ -1,0 +1,17 @@
+<template>
+    <lightning-card title="Team Members">
+        <template if:true={showGrid}>
+            <c-team-member-matter-l-w-c 
+                record-id={recordId}
+                onviewprofile={handleViewProfile}>
+            </c-team-member-matter-l-w-c>
+        </template>
+        
+        <template if:true={showProfileView}>
+            <c-member-page 
+                record-id={selectedUserId}
+                onbacktoteam={handleBackToTeam}>
+            </c-member-page>
+        </template>
+    </lightning-card>
+</template>

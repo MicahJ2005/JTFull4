@@ -1,0 +1,22 @@
+.container {
+    padding: 10px 0 10px 20px; 
+    border-left: 5px solid #005587; 
+    background: transparent;
+}
+
+.title {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 28px;
+    color: #222;
+    margin: 0 0 15px 0;
+    font-weight: 500;
+    line-height: 1.1;
+}
+
+.description {
+    font-size: 16px;
+    line-height: 1.5;
+    color: #555;
+    font-family: 'Salesforce Sans', Arial, sans-serif;
+    max-width: 800px;
+}

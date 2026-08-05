@@ -1,0 +1,93 @@
+<template>
+    <div class="cal-page">
+        <div class="cal-layout">
+
+            <!-- ============ LEFT: Upcoming Appointments ============ -->
+            <div class="cal-main">
+                <h2 class="cal-section-title">Upcoming Appointments</h2>
+
+                <!-- Next 14 days -->
+                <template if:true={hasNext14}>
+                    <h3 class="cal-group-title">Next 14 days</h3>
+                    <template for:each={next14} for:item="appt">
+                        <c-appointment-card key={appt.id} appt={appt}></c-appointment-card>
+                    </template>
+                </template>
+
+                <!-- Future -->
+                <template if:true={hasFuture}>
+                    <h3 class="cal-group-title">Future Appointments</h3>
+                    <template for:each={future} for:item="appt">
+                        <c-appointment-card key={appt.id} appt={appt}></c-appointment-card>
+                    </template>
+                </template>
+
+                <!-- Past -->
+                <template if:true={hasPast}>
+                    <h3 class="cal-group-title">Past Appointments</h3>
+                    <template for:each={past} for:item="appt">
+                        <c-appointment-card key={appt.id} appt={appt}></c-appointment-card>
+                    </template>
+                </template>
+
+                <!-- Empty state -->
+                <template if:false={hasAny}>
+                    <p class="cal-empty">You have no appointments yet. When your team schedules one, it will show up here.</p>
+                </template>
+
+                <!-- Need to Schedule -->
+                <div class="cal-schedule">
+                    <h3 class="cal-schedule-title">Need to Schedule an Appointment</h3>
+                    <p class="cal-schedule-text">{scheduleText}</p>
+                    <button class="cal-contact-btn" onclick={handleContactTeam}>
+                        <lightning-icon icon-name="utility:send" size="x-small" class="cal-contact-icon"></lightning-icon>
+                        <span>Contact My Team</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ============ RIGHT: Month calendar ============ -->
+            <div class="cal-side">
+                <div class="cal-widget">
+                    <div class="cal-widget-header">
+                        <button class="cal-nav" onclick={handlePrevMonth} title="Previous month">
+                            <lightning-icon icon-name="utility:chevronleft" size="x-small"></lightning-icon>
+                        </button>
+                        <span class="cal-month-label">{monthLabel}</span>
+                        <button class="cal-nav" onclick={handleNextMonth} title="Next month">
+                            <lightning-icon icon-name="utility:chevronright" size="x-small"></lightning-icon>
+                        </button>
+                    </div>
+
+                    <div class="cal-grid cal-weekdays">
+                        <template for:each={weekdayHeaders} for:item="wd">
+                            <div key={wd.key} class="cal-weekday">{wd.label}</div>
+                        </template>
+                    </div>
+
+                    <template for:each={weeks} for:item="week">
+                        <div key={week.id} class="cal-grid">
+                            <template for:each={week.days} for:item="d">
+                                <div key={d.key} class={d.cssClass} data-key={d.key} onclick={handleDayClick}>
+                                    <span class="cal-day-num">{d.day}</span>
+                                    <template if:true={d.hasAppt}>
+                                        <span class="cal-dot"></span>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Selected day appointments -->
+                <template if:true={hasSelected}>
+                    <div class="cal-selected-list">
+                        <template for:each={selectedAppts} for:item="appt">
+                            <c-appointment-card key={appt.id} appt={appt}></c-appointment-card>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</template>

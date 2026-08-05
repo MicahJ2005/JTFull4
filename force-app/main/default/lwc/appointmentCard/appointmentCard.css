@@ -1,0 +1,53 @@
+:host { --jt-teal: #1e5a7d; --jt-text: #3e3e3c; display: block; }
+
+.appt-card {
+    display: flex;
+    gap: 1rem;
+    background: #fff;
+    border: 1px solid #e5e9ec;
+    border-radius: 6px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.85rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    align-items: stretch;
+}
+
+.appt-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 56px;
+    border-right: 1px solid #eee;
+    padding-right: 0.9rem;
+}
+.appt-month { font-size: 0.7rem; font-weight: 700; color: var(--jt-teal); text-transform: uppercase; letter-spacing: 0.5px; }
+.appt-day { font-size: 1.6rem; font-weight: 800; color: #000; line-height: 1; }
+.appt-weekday { font-size: 0.65rem; font-weight: 600; color: #888; text-transform: uppercase; }
+
+.appt-body { flex-grow: 1; display: flex; flex-direction: column; gap: 0.3rem; }
+.appt-title-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.appt-type-icon { --slds-c-icon-color-foreground-default: var(--jt-teal); }
+.appt-subject { font-weight: 700; color: #000; font-size: 0.95rem; }
+.appt-with { color: #666; font-size: 0.85rem; }
+
+.appt-meta {
+    display: flex; align-items: center; gap: 0.35rem;
+    color: var(--jt-text); font-size: 0.8rem;
+}
+.appt-meta lightning-icon { --slds-c-icon-color-foreground-default: #999; }
+
+.appt-action {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    background: none; border: none; cursor: pointer;
+    color: var(--jt-teal); font-weight: 600; font-size: 0.8rem;
+    padding: 0.2rem 0; margin-top: 0.2rem; width: fit-content;
+}
+.appt-action:hover { text-decoration: underline; }
+.appt-action lightning-icon { --slds-c-icon-color-foreground-default: var(--jt-teal); }
+
+.appt-notes {
+    background: #f6f8f9; border-left: 3px solid var(--jt-teal);
+    padding: 0.6rem 0.8rem; margin-top: 0.4rem; border-radius: 4px;
+    font-size: 0.85rem; color: var(--jt-text); white-space: pre-wrap;
+}

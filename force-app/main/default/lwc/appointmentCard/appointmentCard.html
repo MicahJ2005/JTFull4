@@ -1,0 +1,52 @@
+<template>
+    <div class="appt-card">
+        <!-- Date block -->
+        <div class="appt-date">
+            <span class="appt-month">{appt.monthAbbr}</span>
+            <span class="appt-day">{appt.day}</span>
+            <span class="appt-weekday">{appt.weekday}</span>
+        </div>
+
+        <!-- Details -->
+        <div class="appt-body">
+            <div class="appt-title-row">
+                <lightning-icon icon-name={appt.iconName} size="x-small" class="appt-type-icon"></lightning-icon>
+                <span class="appt-subject">{appt.subject}</span>
+                <template if:true={hasWith}>
+                    <span class="appt-with">with {appt.withWho}</span>
+                </template>
+            </div>
+
+            <div class="appt-meta">
+                <lightning-icon icon-name="utility:clock" size="xx-small"></lightning-icon>
+                <span>{appt.timeLabel}</span>
+            </div>
+            <template if:true={hasLocation}>
+                <div class="appt-meta">
+                    <lightning-icon icon-name="utility:location" size="xx-small"></lightning-icon>
+                    <span>{appt.location}</span>
+                </div>
+            </template>
+
+            <!-- Action: download (upcoming) or summary notes (past) -->
+            <template if:false={isPast}>
+                <button class="appt-action" onclick={downloadIcs}>
+                    <lightning-icon icon-name="utility:download" size="xx-small"></lightning-icon>
+                    <span>Download Calendar Event</span>
+                </button>
+            </template>
+
+            <template if:true={isPast}>
+                <template if:true={hasNotes}>
+                    <button class="appt-action" onclick={toggleNotes}>
+                        <lightning-icon icon-name="utility:note" size="xx-small"></lightning-icon>
+                        <span>View Meeting Summary Notes</span>
+                    </button>
+                    <template if:true={showNotes}>
+                        <div class="appt-notes">{appt.summaryNotes}</div>
+                    </template>
+                </template>
+            </template>
+        </div>
+    </div>
+</template>

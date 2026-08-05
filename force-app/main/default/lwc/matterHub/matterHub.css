@@ -1,0 +1,278 @@
+/* ============================================================
+   Matter Hub - Johnson Turner client portal
+   Palette matches teamMemberMatterLWC (#1e5a7d teal / gold)
+   ============================================================ */
+:host {
+    --jt-teal: #1e5a7d;
+    --jt-teal-dark: #174a67;
+    --jt-gold: #d4a017;
+    --jt-bg: #f3f3f3;
+    --jt-text: #3e3e3c;
+}
+
+.matter-hub {
+    background-color: var(--jt-bg);
+    padding: 1rem;
+}
+
+/* ---------- Collapsible header ---------- */
+.mh-section-header {
+    background: linear-gradient(135deg, var(--jt-teal) 0%, #2d6f8f 100%);
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.mh-section-header:hover {
+    background: linear-gradient(135deg, #2d6f8f 0%, var(--jt-teal) 100%);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.mh-section-title {
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.mh-toggle-icon {
+    --slds-c-icon-color-foreground-default: #ffffff;
+}
+
+/* ---------- Layout ---------- */
+.mh-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    align-items: start;
+}
+
+.mh-main,
+.mh-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+/* ---------- Cards ---------- */
+.mh-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.mh-card-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #000;
+    margin: 0 0 0.75rem 0;
+    border-bottom: 2px solid var(--jt-teal);
+    padding-bottom: 0.5rem;
+}
+
+.mh-card-text {
+    color: var(--jt-text);
+    line-height: 1.6;
+    font-size: 0.95rem;
+    display: block;
+}
+
+.mh-muted {
+    color: #888;
+    font-style: italic;
+}
+
+.mh-subheading {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--jt-teal);
+    margin: 1.5rem 0 0.75rem 0;
+}
+
+.mh-center {
+    text-align: center;
+    margin-top: 1.25rem;
+}
+
+.mh-cta {
+    --slds-c-button-brand-color-background: var(--jt-teal);
+    --slds-c-button-brand-color-border: var(--jt-teal);
+    --slds-c-button-brand-color-background-hover: var(--jt-teal-dark);
+}
+
+/* ---------- Progress tracker ---------- */
+.mh-progress {
+    display: flex;
+    width: 100%;
+    border-radius: 24px;
+    overflow: hidden;
+    margin: 0.5rem 0 1.25rem 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.phase-step {
+    flex: 1;
+    text-align: center;
+    padding: 0.6rem 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.phase-complete {
+    background-color: var(--jt-teal);
+}
+
+.phase-current {
+    background-color: var(--jt-gold);
+    color: #fff;
+}
+
+.phase-upcoming {
+    background-color: #c9d2d8;
+    color: #5c6b73;
+}
+
+.mh-phase-heading {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--jt-gold);
+    margin: 0 0 0.5rem 0;
+    border-bottom: 2px solid var(--jt-gold);
+    display: inline-block;
+    padding-bottom: 0.25rem;
+}
+
+/* ---------- Documents iframe ---------- */
+.mh-doc-frame {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.mh-doc-frame iframe {
+    display: block;
+    border: 0;
+}
+
+/* ---------- Tasks ---------- */
+.mh-task-list,
+.mh-appt-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mh-task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.mh-task-item:last-child {
+    border-bottom: none;
+}
+
+.mh-task-check {
+    margin-top: 0.2rem;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--jt-teal);
+    cursor: not-allowed;
+}
+
+.mh-task-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.mh-task-subject {
+    color: #000;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.mh-task-due {
+    font-size: 0.75rem;
+    color: var(--jt-teal);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mh-task-due[data-overdue="true"] {
+    color: #c23934;
+}
+
+.mh-link-right {
+    text-align: right;
+    margin-top: 0.5rem;
+}
+
+.mh-link-right a {
+    color: var(--jt-teal);
+    font-size: 0.85rem;
+    font-style: italic;
+    text-decoration: none;
+}
+
+.mh-link-right a:hover {
+    text-decoration: underline;
+}
+
+/* ---------- Appointments ---------- */
+.mh-appt-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.mh-appt-item:last-child {
+    border-bottom: none;
+}
+
+.mh-appt-icon {
+    --slds-c-icon-color-foreground-default: var(--jt-teal);
+    margin-top: 0.15rem;
+}
+
+.mh-appt-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.mh-appt-subject {
+    color: #000;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.mh-appt-when {
+    font-size: 0.8rem;
+    color: var(--jt-text);
+}
+
+.mh-appt-loc {
+    font-size: 0.78rem;
+    color: #888;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1024px) {
+    .mh-layout {
+        grid-template-columns: 1fr;
+    }
+}

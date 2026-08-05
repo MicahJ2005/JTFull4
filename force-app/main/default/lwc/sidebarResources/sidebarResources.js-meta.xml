@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>59.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightningCommunity__Page</target>
+        <target>lightningCommunity__Default</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightningCommunity__Default">
+            <property name="title" type="String" label="Section Title" default="Resources"/>
+            
+            <property name="blogUrl" type="String" label="Blogs + Articles URL" default="/s/blog"/>
+            
+            <property name="videoUrl" type="String" label="Video Explainers URL" default="/s/video-explainers"/>
+            
+            <property name="consultUrl" type="String" label="Consult Doc Library URL" default="/s/consult-doc-library"/>
+            
+            <property name="welcomeUrl" type="String" label="Welcome Packet URL" default="/s/welcome-packet"/>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>

@@ -4,25 +4,52 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         sendZoomDataToSalesforce();
     }
 
-    @future(callout=true)
+    // Kicks off ZoomPhoneIntegrationQueueable rather than doing the work in a @future method.
+    // A Queueable job started from a @future (or Batch) context can't itself enqueue further
+    // jobs ("Maximum stack depth has been reached"), and Step 5 below needs to chain a
+    // Queueable per recording so each one gets its own callout/governor-limit budget. Starting
+    // that chain from a plain Queueable (launched synchronously here, not from @future) avoids
+    // the restriction.
     public static void sendZoomDataToSalesforce() {
-        String clientId = 'OlTvfeKSCuXyENCswlexQ';
-        String clientSecret = 'mJQ2SXpsBABlord50hHQVj7l40tLg3n9';
-        String accountId = 'Af5TohNeQKiIODcnyFCOyQ';
+        System.enqueueJob(new ZoomPhoneIntegrationQueueable());
+    }
+
+    /// Body of the Zoom Phone sync, run from ZoomPhoneIntegrationQueueable.execute().
+    public static void runZoomDataSync() {
+        ZoomConfig__mdt cfg = [
+            SELECT AccountId__c, ClientId__c, ClientSecret__c, DefaultUserId__c
+            FROM   ZoomConfig__mdt
+            WHERE  DeveloperName = 'Default'
+            LIMIT  1
+        ];
+
+        String clientId = cfg.ClientId__c;
+        String clientSecret = cfg.ClientSecret__c;
+        String accountId = cfg.AccountId__c;
+        String defaultUserId = cfg.DefaultUserId__c;
 
         // Step 1: Get Zoom OAuth Token
         String zoomToken = getZoomToken(clientId, clientSecret, accountId);
         System.debug('Zoom Token: ' + zoomToken);
-        
+
         // Step 2: Fetch Call Logs
         Datetime now = Datetime.now(); // Current datetime
-        String toDateTime = now.addHours(-1).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1 hour ago
-        String fromDateTime = now.addHours(-1).addMinutes(-30).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1.5 hours ago
-        String zoomJson = fetchZoomCallHistory(zoomToken, fromDateTime, toDateTime);
+        // String toDateTime = now.addHours(-1).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1 hour ago
+        // String fromDateTime = now.addHours(-1).addMinutes(-30).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1.5 hours ago
+        String toDateTime   = DateTime.newInstanceGmt(2026, 7, 22, 14, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 9:00am CDT
+        String fromDateTime = DateTime.newInstanceGmt(2026, 7, 22, 13, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 8:00am CDT
+
+        String zoomJson;
+        try {
+            zoomJson = fetchZoomCallHistory(zoomToken, fromDateTime, toDateTime);
+        } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'fetchZoomCallHistory', null, null, e);
+            throw e;
+        }
         System.debug('Zoom JSON: ' + zoomJson);
 
         // Step 3: Transform Zoom Data
-        String salesforceJson = transformZoomData(zoomJson);
+        String salesforceJson = transformZoomData(zoomJson, defaultUserId);
         System.debug('Salesforce JSON: ' + salesforceJson);
 
         // if(salesforceJson != null){
@@ -68,6 +95,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                 throw new CalloutException('Failed to get Zoom token: ' + res.getBody());
             }
         } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'getZoomToken', null, null, e);
             throw new CalloutException('Error during Zoom token request: ' + e.getMessage());
         }
     }
@@ -137,7 +165,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         return fetchZoomCallHistory(token, fromDateTime, toDateTime, null, new List<Map<String, Object>>());
     }    
     
-    public static String transformZoomData(String zoomJson) {
+    public static String transformZoomData(String zoomJson, String defaultUserId) {
         // Step 1: Build a Map of Salesforce User IDs
         Map<String, User> userNameToIdMap = buildUserMap();
 
@@ -145,7 +173,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         set<string> internalUserNameSet = new set<string>();
         // List<String> phoneFormats = new List<String>();
         String phoneFormats;
-        for(User u: ([SELECT Id, Name, MobilePhone, phone FROM User WHERE isActive = true])){
+        for(User u: ([SELECT Id, Name, MobilePhone, phone, profile.name FROM User WHERE isActive = true AND profile.name != 'Fairwell Customer Community Plus Login User' AND profile.name != 'Kapsten Customer Community Login User'])){
             
             if(u.phone != null){
                 phoneFormats = ZoomSMSIntegration.removePhoneNumberFormat(u.phone);
@@ -236,7 +264,6 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             Map<String, Object> call = (Map<String, Object>) log;
             // System.debug('call transformZoomData '+ call);
             Map<String, Object> formattedCall = new Map<String, Object>();
-    
             // Skip calls under 10 seconds
             if (call.containsKey('duration') && call.get('duration') != null) {
                 Integer durationInSeconds = Integer.valueOf(call.get('duration'));
@@ -297,14 +324,19 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                     if (salesforceUserId != null) {
                         formattedCall.put('userId', salesforceUserId);
                     } else {
-                        System.debug('Skipping record due to missing Salesforce user for Zoom user: ' + userName);
-                        continue; // Skip this record
+                        // System.debug('Skipping record due to missing Salesforce user for Zoom user: ' + userName);
+                        // continue; // Skip this record
+                        formattedCall.put('userId', defaultUserId);
                     }
+                } else {
+                    // System.debug('Skipping record — no Salesforce user found for: ' + userName);
+                    // continue; // Skip auto_receptionist, call queues, and other unmapped callers
+                    formattedCall.put('userId', defaultUserId);
                 }
-                
             } else {
-                System.debug('Skipping record due to missing external ID (caller_ext_id or callee_ext_id): ' + call);
-                continue; // Skip this record
+                // System.debug('Skipping record due to missing external ID (caller_ext_id or callee_ext_id): ' + call);
+                // continue; // Skip this record
+                formattedCall.put('userId', defaultUserId);
             }
             
             // System.debug('toPhoneNumber callee_did_number: '+ call.get('callee_did_number'));
@@ -312,15 +344,22 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             // System.debug('fromPhoneNumber caller_did_number: '+ call.get('caller_did_number'));
             System.debug('caller_name caller_name: '+ call.get('caller_name'));
             // System.debug('direction direction: '+ call.get('direction'));
-            Boolean skipThis = false;
-            if(internalUserNameSet.contains(String.valueOf(call.get('callee_name'))) && internalUserNameSet.contains(String.valueOf(call.get('caller_name')))){
-                System.debug('THIS IS AN INTERNAL CALL BETWEEN '+ call.get('caller_name') +' AND '+ call.get('callee_name') +'... Skipping this record!!!');
-            }else{
+            // Boolean skipThis = false;
+            /// removed this filter on internal calls- MJ Demand Chain 6.2.2026
+            // if(internalUserNameSet.contains(String.valueOf(call.get('callee_name'))) && internalUserNameSet.contains(String.valueOf(call.get('caller_name')))){
+            //     System.debug('THIS IS AN INTERNAL CALL BETWEEN '+ call.get('caller_name') +' AND '+ call.get('callee_name') +'... Skipping this record!!!');
+            // }else{
             
                 string toPhoneNumber = String.valueOf(call.get('callee_did_number'));
+                if(toPhoneNumber == null){
+                    toPhoneNumber = String.valueOf(call.get('callee_ext_number'));
+                }
                 // System.debug('toPhoneNumber BEFORE: '+ toPhoneNumber);
-                
+
                 string fromPhoneNumber = String.valueOf(call.get('caller_did_number'));
+                if(fromPhoneNumber == null){
+                    fromPhoneNumber = String.valueOf(call.get('caller_ext_number'));
+                }
                 // System.debug('fromPhoneNumber BEFORE: '+ fromPhoneNumber);
 
                 if(toPhoneNumber == null){
@@ -360,21 +399,24 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
 
                 
                 System.debug('internalUserPhoneSet: '+ internalUserPhoneSet);
-                if( toPhoneNumber != null && fromPhoneNumber != null){
-                    System.debug('toPhoneNumber AFTER: '+ toPhoneNumber);
-                    System.debug('fromPhoneNumber AFTER: '+ fromPhoneNumber);
-                    System.debug('toPhoneNumber LENGTH AFTER: '+ toPhoneNumber.length());
-                    System.debug('fromPhoneNumber LENGTH AFTER: '+ fromPhoneNumber.length());
-                    if((internalUserPhoneSet.contains(toPhoneNumber) || toPhoneNumber.length() == 4) && 
-                        (internalUserPhoneSet.contains(fromPhoneNumber) || fromPhoneNumber.length() == 4)){
-                        system.debug('To: ' +toPhoneNumber+' and FROM: ' +fromPhoneNumber +' are both internal... WE CAN SKIP THS CONVO');
-                    }
-                }
+                // if( toPhoneNumber != null && fromPhoneNumber != null){
+                //     System.debug('toPhoneNumber AFTER: '+ toPhoneNumber);
+                //     System.debug('fromPhoneNumber AFTER: '+ fromPhoneNumber);
+                //     System.debug('toPhoneNumber LENGTH AFTER: '+ toPhoneNumber.length());
+                //     System.debug('fromPhoneNumber LENGTH AFTER: '+ fromPhoneNumber.length());
+                //     if((internalUserPhoneSet.contains(toPhoneNumber) || toPhoneNumber.length() == 4) && 
+                //         (internalUserPhoneSet.contains(fromPhoneNumber) || fromPhoneNumber.length() == 4)){
+                //         system.debug('To: ' +toPhoneNumber+' and FROM: ' +fromPhoneNumber +' are both internal... WE CAN SKIP THS CONVO');
+                //     }
+                // }
                 
                 
                 // Map other fields
                 // formattedCall.put('toPhoneNumber', call.get('callee_did_number'));
                 // formattedCall.put('fromPhoneNumber', call.get('caller_did_number'));
+                system.debug('toPhoneNumber: '+ toPhoneNumber);
+                system.debug('fromPhoneNumber: '+ fromPhoneNumber);
+                system.debug('Call Id: '+ call.get('call_id'));
                 if(toPhoneNumber != null && toPhoneNumber != '' && fromPhoneNumber != null && fromPhoneNumber != ''){
                     formattedCall.put('toPhoneNumber', toPhoneNumber);
                     formattedCall.put('fromPhoneNumber', fromPhoneNumber);
@@ -386,7 +428,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                     // Add transformed call to the list
                     formattedCalls.add(formattedCall);
                 }
-            }
+            // }
         }
     
         // Create output map
@@ -431,49 +473,83 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
             req.setHeader('Content-Type', 'application/json');
             req.setBody(filteredJsonInput);
-    
-            // Send the request
-            Http http = new Http();
-            HttpResponse res = http.send(req);
-            system.debug('res BODY HERE: ' + res.getBody());
-            // Handle response
-            if (res.getStatusCode() == 201) {
-                // Parse the response and return success for individual calls
-                 // Parse response into a Map
-                Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
-                    system.debug('responseMap HERE: ' + responseMap);
-                // Extract the "calls" array
-                if (responseMap.containsKey('calls')) {
-                    List<Object> callObjects = (List<Object>) responseMap.get('calls');
-                    system.debug('callObjects HERE: ' + callObjects);
-                    // Map each call object to CallResponse
-                    for (Object obj : callObjects) {
-                        CallResponse response = (CallResponse) JSON.deserialize(JSON.serialize(obj), CallResponse.class);
-                        system.debug('Response object: ' + obj);
-                        responseList.add(response);
+
+            try {
+                // Send the request
+                Http http = new Http();
+                HttpResponse res = http.send(req);
+                system.debug('res BODY HERE: ' + res.getBody());
+                // Handle response
+                if (res.getStatusCode() == 201) {
+                    // Parse the response and return success for individual calls
+                     // Parse response into a Map
+                    Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+                        system.debug('responseMap HERE: ' + responseMap);
+                    // Extract the "calls" array
+                    if (responseMap.containsKey('calls')) {
+                        List<Object> callObjects = (List<Object>) responseMap.get('calls');
+                        system.debug('callObjects HERE: ' + callObjects);
+                        // Map each call object to CallResponse
+                        for (Object obj : callObjects) {
+                            CallResponse response = (CallResponse) JSON.deserialize(JSON.serialize(obj), CallResponse.class);
+                            system.debug('Response object: ' + obj);
+                            responseList.add(response);
+                        }
+                    } else {
+                        throw new CalloutException('Malformed response: Missing "calls" key');
                     }
                 } else {
-                    throw new CalloutException('Malformed response: Missing "calls" key');
+                    // Log or throw error for unexpected status codes
+                    System.debug('Error: ' + res.getBody());
+                    throw new CalloutException('Error sending call metadata to ECI: ' + res.getStatusCode() + ' - ' + res.getBody());
                 }
-            } else {
-                // Log or throw error for unexpected status codes
-                System.debug('Error: ' + res.getBody());
-                throw new CalloutException('Error sending call metadata to ECI: ' + res.getStatusCode() + ' - ' + res.getBody());
+            } catch (Exception e) {
+                ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'sendCallMetadataToECI', null, null, e);
+                throw e;
             }
 
         return responseList;
     }
     
     public static void processRecordings(String token, List<CallResponse> responses, String fromDateTime, String toDateTime) {
+        Agent_Prompt_Trigger__mdt setting = [
+            SELECT IsActive__c
+            FROM Agent_Prompt_Trigger__mdt
+            WHERE DeveloperName = 'ApexAgentActive'
+            LIMIT 1
+        ];
         // Fetch recordings for the specified timeframe
-        List<Map<String, Object>> recordings = fetchRecordings(token, fromDateTime, toDateTime);
-        List<Call_Transcript__c> transcripts = new List<Call_Transcript__c>();
-    
+        List<Map<String, Object>> recordings;
+        try {
+            recordings = fetchRecordings(token, fromDateTime, toDateTime);
+        } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'fetchRecordings', null, null, e);
+            throw e;
+        }
+
         if (recordings == null || recordings.isEmpty()) {
             System.debug('No recordings found in the specified timeframe.');
             return;
         }
-    
+
+        // Zoom can return the same physical recording once per call leg (e.g. both legs of an
+        // internal-to-internal call share one call_id), so dedupe by call_id before processing -
+        // otherwise the transcript gets uploaded and inserted twice against the same VoiceCall.
+        Set<String> seenCallIds = new Set<String>();
+        List<Map<String, Object>> dedupedRecordings = new List<Map<String, Object>>();
+        for (Map<String, Object> recording : recordings) {
+            String callId = recording != null ? (String) recording.get('call_id') : null;
+            if (callId == null || !seenCallIds.contains(callId)) {
+                if (callId != null) {
+                    seenCallIds.add(callId);
+                }
+                dedupedRecordings.add(recording);
+            } else {
+                System.debug('Skipping duplicate recording for callId: ' + callId);
+            }
+        }
+        recordings = dedupedRecordings;
+
         // Map CallResponse objects by their externalId for faster lookups
         Map<String, CallResponse> responseMap = new Map<String, CallResponse>();
 
@@ -482,194 +558,202 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                 responseMap.put(response.externalId, response);
             }
         }
-        
+
+        // Each recording's transcript/upload callouts are processed one at a time in chained
+        // Queueables (scan phase, then transcript-build phase) instead of in a loop here, so a
+        // slow or timed-out callout for one recording gets its own fresh transaction budget
+        // instead of sharing the 120s cumulative callout budget with every other recording.
+        System.enqueueJob(new ZoomPhoneRecordingScanQueueable(
+            token, recordings, 0, responseMap, new Set<String>(), new Set<String>(), setting.IsActive__c
+        ));
+    }
+
+    /// Per-recording body of the scan phase: fetches the transcript for one recording and
+    /// collects the phone numbers/extensions mentioned in it. Called once per recording from
+    /// ZoomPhoneRecordingScanQueueable, each in its own transaction.
+    public static void scanRecordingForPhoneNumbers(
+        Map<String, Object> recording, String token, Map<String, CallResponse> responseMap,
+        Set<String> setPhoneFormats, Set<String> setPhoneExtensions
+    ) {
+        if (recording == null || !recording.containsKey('download_url')) return;
+
+        String callId = (String) recording.get('call_id');
+        String fileUrl = (String) recording.get('download_url');
+        System.debug('Processing recording with callId: ' + callId + ', fileUrl: ' + fileUrl);
+
+        if (callId == null || fileUrl == null) return;
+
+        if (!responseMap.containsKey(callId)) {
+            System.debug('No matching CallResponse found for callId: ' + callId);
+            return;
+        }
+
+        CallResponse matchedResponse = responseMap.get(callId);
+        System.debug('Matched response for callId: ' + callId);
+
+        String transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
+        System.debug('transcript: ' + transcript);
+        Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
+        List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
+        for (Object data : timelineEntries) {
+            Map<String, Object> transcriptEntry = (Map<String, Object>) data;
+            String userId = (String) transcriptEntry.get('userId');
+            if (userId.length() > 5) {
+                List<String> phoneFormats = ZoomSMSIntegration.generatePhoneFormats(userId);
+                for (String phone : phoneFormats) {
+                    setPhoneFormats.add(phone);
+                }
+            }
+            if (userId.length() == 4) {
+                setPhoneExtensions.add(userId);
+            }
+        }
+    }
+
+    /// Called by ZoomPhoneRecordingScanQueueable once every recording has been scanned. Builds
+    /// the phone/extension lookup maps (SOQL only, no callouts) and kicks off the transcript
+    /// build phase.
+    public static void finishScanAndStartTranscriptBuild(
+        String token, List<Map<String, Object>> recordings, Map<String, CallResponse> responseMap,
+        Set<String> setPhoneFormats, Set<String> setPhoneExtensions, Boolean agentPromptActive
+    ) {
         Map<String, Account> phoneToAccountIdMap = new Map<String, Account>();
         Map<String, Lead> phoneToLeadIdMap = new Map<String, Lead>();
         Map<String, User> phoneToUserIdMap = new Map<String, User>();
-        
-        Set<string> setPhoneFormats = new Set<String>();
-        Set<string> setPhoneExtensions = new Set<String>();
-        //Set<string> setAllNames = new Set<String>();
 
-        /// get maps of Users based on phone number
-        for (Map<String, Object> recording : recordings) {
-            try {
-                if (recording == null || !recording.containsKey('download_url')) continue;
-    
-                String callId = (String) recording.get('call_id');
-                String fileUrl = (String) recording.get('download_url');
-                System.debug('Processing recording with callId: ' + callId + ', fileUrl: ' + fileUrl);
-    
-                if (callId == null || fileUrl == null) continue;
-    
-                String transcriptBody = '';
-                // Match the recording to a CallResponse using callId
-                if (responseMap.containsKey(callId)) {
-                    CallResponse matchedResponse = responseMap.get(callId);
-                    System.debug('Matched response for callId: ' + callId);
-    
-                    // uploadRecording(matchedResponse.uploadUrl, fileUrl);
-                    String transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
-                    System.debug('transcript: ' + transcript);
-                    // get the body of the transcript
-                    Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
-                    system.debug('parsedData'+ parsedData.get('timeline'));
-                    List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
-                    for(Object data: timelineEntries){
+        List<Account> returnedAccount = ZoomSMSIntegration.getRelatedPersonAccountByPhoneNumber(setPhoneFormats);
+        List<Lead> returnedLead = ZoomSMSIntegration.getRelatedLeadByPhoneNumber(setPhoneFormats);
+        List<User> returnedUser = ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats);
+        List<User> returnedUserExtension = getRelatedUsersByExtension(setPhoneExtensions);
 
-                        system.debug('data text'+ data);
-                        Map<String, Object> transcriptEntry = (Map<String, Object>) data;
-                        String userId = (String) transcriptEntry.get('userId');
-                        system.debug('userId:'+ userId);
-                        string userName = userId;
-                        if(userId.length() > 5){
-                            List<String> phoneFormats = ZoomSMSIntegration.generatePhoneFormats(userId);
-                            system.debug('phoneFormats'+ phoneFormats);
-                            for(string phone: phoneFormats){
-                                setPhoneFormats.add(phone);
-                            }
-                        }
-                        if(userId.length() == 4){
-                            setPhoneExtensions.add(userId);
-                        }
-                    }
-                } else {
-                    System.debug('No matching CallResponse found for callId: ' + callId);
-                }
-            } catch (Exception ex) {
-                System.debug('Error processing recording: ' + ex.getMessage());
-            }
-        }
-
-        List<Account> returnedAccount = ZoomSMSIntegration.getRelatedPersonAccountByPhoneNumber(setPhoneFormats) != null 
-            ? ZoomSMSIntegration.getRelatedPersonAccountByPhoneNumber(setPhoneFormats) 
-            : new List<Account>();
-
-        List<Lead> returnedLead = ZoomSMSIntegration.getRelatedLeadByPhoneNumber(setPhoneFormats) != null 
-            ? ZoomSMSIntegration.getRelatedLeadByPhoneNumber(setPhoneFormats) 
-            : new List<Lead>();
-
-        List<User> returnedUser = ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats) != null 
-            ? ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats) 
-            : new List<User>();
-
-        List<User> returnedUserExtension = getRelatedUsersByExtension(setPhoneExtensions) != null 
-            ? getRelatedUsersByExtension(setPhoneExtensions) 
-            : new List<User>();
-
-        system.debug('returnedAccount'+ returnedAccount.size());
-        system.debug('returnedLead'+ returnedLead.size());
-        system.debug('returnedUser'+ returnedUser.size());
-        if(returnedAccount.size() > 0){
-            for(Account a: returnedAccount){
-                if(a != null){
+        if (returnedAccount != null) {
+            for (Account a : returnedAccount) {
+                if (a != null) {
                     phoneToAccountIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(a.phone), a);
                 }
             }
         }
-        
-        if(returnedLead.size() > 0){
-            for(Lead l: returnedLead){
-                if(l != null ){
+
+        if (returnedLead != null) {
+            for (Lead l : returnedLead) {
+                if (l != null) {
                     phoneToLeadIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(l.phone), l);
                 }
             }
         }
 
-        if(returnedUser.size() > 0){
-            for(User u: returnedUser){
-                if(u != null){
+        if (returnedUser != null) {
+            for (User u : returnedUser) {
+                if (u != null) {
                     phoneToUserIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(u.phone), u);
                 }
             }
         }
 
-         if(returnedUserExtension.size() > 0){
-            for(User u: returnedUserExtension){
-                if(u.extension != null){
-                    system.debug('Extension: '+ u.extension + 'for user:'+ u.name);
+        if (returnedUserExtension != null) {
+            for (User u : returnedUserExtension) {
+                if (u.extension != null) {
+                    system.debug('Extension: ' + u.extension + 'for user:' + u.name);
                     phoneToUserIdMap.put(u.Extension, u);
                 }
             }
         }
 
-        // Process each recording
-        for (Map<String, Object> recording : recordings) {
-            try {
-                if (recording == null || !recording.containsKey('download_url')) continue;
-    
-                String callId = (String) recording.get('call_id');
-                String fileUrl = (String) recording.get('download_url');
-                String transcriptUrl = (String) recording.get('transcript_download_url');
-                System.debug('transcriptUrl: ' + transcriptUrl);
-                System.debug('Processing recording with callId: ' + callId + ', fileUrl: ' + fileUrl);
-    
-                if (callId == null || fileUrl == null) continue;
-    
-                String transcriptBody = '';
-                // Match the recording to a CallResponse using callId
-                if (responseMap.containsKey(callId)) {
-                    CallResponse matchedResponse = responseMap.get(callId);
-                    System.debug('Matched response for callId: ' + callId);
-    
-                    uploadRecording(matchedResponse.uploadUrl, fileUrl);
-                    System.debug('(String) recording.get(\'id\'): ' + recording.get('id'));
-                    String transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
-                    System.debug('transcript: ' + transcript);
-                    // get the body of the transcript
-                    Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
-                    system.debug('parsedData'+ parsedData.get('timeline'));
-                    List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
-                    for(Object data: timelineEntries){
+        System.enqueueJob(new ZoomPhoneTranscriptBuildQueueable(
+            token, recordings, 0, responseMap, phoneToAccountIdMap, phoneToLeadIdMap, phoneToUserIdMap,
+            new List<Call_Transcript__c>(), agentPromptActive
+        ));
+    }
 
-                        system.debug('data text'+ data);
-                        Map<String, Object> transcriptEntry = (Map<String, Object>) data;
-                        String text = (String) transcriptEntry.get('text');
-                        system.debug('transcriptEntry:'+ transcriptEntry);
-                        // // String rawText = (String) transcriptEntry.get('raw_text');
-                        // // String ts = (String) transcriptEntry.get('ts');
-                        // // String endTs = (String) transcriptEntry.get('end_ts');
-                        String userId = (String) transcriptEntry.get('userId');
-                        system.debug('userId:'+ userId);
-                        // // String channelMark = (String) transcriptEntry.get('channelMark');
-                        string userName = userId;
-                        if(phoneToAccountIdMap.containsKey(userId)){
-                            userName = phoneToAccountIdMap.get(userId).Name;
-                        }
-                        else if(phoneToLeadIdMap.containsKey(userId)){
-                            userName = phoneToLeadIdMap.get(userId).Name;
-                        }else if(phoneToUserIdMap.containsKey(userId)){
-                            userName = phoneToUserIdMap.get(userId).Name;
-                            system.debug('userName: '+ userName + 'for number:' + userId);
-                        }
-                        else{
-                            userName = userId+', ';
-                        }
-                        system.debug('userName'+ userName);
-                        system.debug('test'+ text);
-                        transcriptBody += 'User: ' + userName + '\r\n' + 'text: '+ text + '\r\n' + '\r\n';
-                    }
+    /// Per-recording body of the transcript-build phase: uploads the audio, fetches the
+    /// transcript for one recording, and builds its Call_Transcript__c record(s). Called once
+    /// per recording from ZoomPhoneTranscriptBuildQueueable, each in its own transaction.
+    public static List<Call_Transcript__c> buildTranscriptForRecording(
+        Map<String, Object> recording, String token, Map<String, CallResponse> responseMap,
+        Map<String, Account> phoneToAccountIdMap, Map<String, Lead> phoneToLeadIdMap, Map<String, User> phoneToUserIdMap
+    ) {
+        List<Call_Transcript__c> result = new List<Call_Transcript__c>();
+        if (recording == null || !recording.containsKey('download_url')) return result;
 
-                    System.debug('transcriptBody: ' + transcriptBody);
-                    System.debug('transcriptBody Length: ' + transcriptBody.length());
-                    List<Call_Transcript__c> CTList = processTranscript(transcriptBody, matchedResponse.voiceCallId);
-                    for(Call_Transcript__c ctranscript: CTList){
-                        transcripts.add(ctranscript);
-                    }
-                    
-                } else {
-                    System.debug('No matching CallResponse found for callId: ' + callId);
+        String callId = (String) recording.get('call_id');
+        String fileUrl = (String) recording.get('download_url');
+        System.debug('Processing recording with callId: ' + callId + ', fileUrl: ' + fileUrl);
+
+        if (callId == null || fileUrl == null) return result;
+
+        if (!responseMap.containsKey(callId)) {
+            System.debug('No matching CallResponse found for callId: ' + callId);
+            return result;
+        }
+
+        CallResponse matchedResponse = responseMap.get(callId);
+        System.debug('Matched response for callId: ' + callId);
+
+        uploadRecording(matchedResponse.uploadUrl, fileUrl);
+        String transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
+        System.debug('transcript: ' + transcript);
+        Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
+        List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
+        String transcriptBody = '';
+        for (Object data : timelineEntries) {
+            Map<String, Object> transcriptEntry = (Map<String, Object>) data;
+            String text = (String) transcriptEntry.get('text');
+            String userId = (String) transcriptEntry.get('userId');
+            String userName = userId;
+            if (phoneToAccountIdMap.containsKey(userId)) {
+                userName = phoneToAccountIdMap.get(userId).Name;
+            } else if (phoneToLeadIdMap.containsKey(userId)) {
+                userName = phoneToLeadIdMap.get(userId).Name;
+            } else if (phoneToUserIdMap.containsKey(userId)) {
+                userName = phoneToUserIdMap.get(userId).Name;
+            } else {
+                userName = userId + ', ';
+            }
+            transcriptBody += 'User: ' + userName + '\r\n' + 'text: ' + text + '\r\n' + '\r\n';
+        }
+
+        System.debug('transcriptBody Length: ' + transcriptBody.length());
+        result.addAll(processTranscript(transcriptBody, matchedResponse.voiceCallId));
+        return result;
+    }
+
+    /// Called by ZoomPhoneTranscriptBuildQueueable once every recording has been processed.
+    /// Upserts the accumulated Call_Transcript__c records and, when the agent prompt trigger is
+    /// active, hands the successfully saved ones off for evaluation.
+    public static void upsertCallTranscripts(List<Call_Transcript__c> transcripts, Boolean agentPromptActive) {
+        if (transcripts.isEmpty()) return;
+
+        Database.UpsertResult[] saveResults = Database.upsert(transcripts, false);
+
+        List<Call_Transcript__c> successfullySaved = new List<Call_Transcript__c>();
+
+        for (Integer i = 0; i < saveResults.size(); i++) {
+            Database.UpsertResult sr = saveResults[i];
+            Call_Transcript__c t = transcripts[i];
+
+            if (sr.isSuccess()) {
+                if (t.Id == null) {
+                    t.Id = sr.getId();
                 }
-            } catch (Exception ex) {
-                System.debug('Error processing recording: ' + ex.getMessage());
+                successfullySaved.add(t);
+            } else {
+                for (Database.Error err : sr.getErrors()) {
+                    System.debug('❌ Upsert failed for transcript ' + t.Name + ': ' + err.getMessage());
+                }
             }
         }
 
-        // Update the VoicepCall records with the transcript
-        if(transcripts.size() > 0){
-            upsert transcripts;
-        } 
-    }    
+        if (agentPromptActive) {
+            if (!successfullySaved.isEmpty()) {
+                for (Call_Transcript__c ctranscript : successfullySaved) {
+                    //String promptResponse = CallTranscriptEvaluatorService.evaluateTranscript(ctranscript.Id);
+                    //System.debug('✅ Evaluated transcript ' + ctranscript.Id + ': ' + promptResponse);
+                }
+            } else {
+                System.debug('⚠️ No transcripts were successfully saved. Skipping evaluation.');
+            }
+        }
+    }
 
     private static final Integer MAX_LENGTH = 131071;
 
@@ -730,6 +814,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         System.debug('transcriptUrl fetchTranscriptFromZoom: ' + transcriptUrl);
         HttpRequest req = new HttpRequest();
         req.setEndpoint(transcriptUrl);
+        req.setTimeout(120000); // Set timeout to 120 seconds
         req.setHeader('Authorization', 'Bearer ' + token);
         req.setMethod('GET'); 
         Http http = new Http();
@@ -764,6 +849,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             // Setup the HTTP request
             HttpRequest req = new HttpRequest();
             req.setEndpoint(endpoint + '?' + queryParams);
+            req.setTimeout(120000); // Set timeout to 120 seconds
             req.setMethod('GET');
             req.setHeader('Authorization', 'Bearer ' + token);
     
@@ -836,6 +922,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             req.setMethod('POST');
             req.setHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
             req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId()); // Authenticate to Salesforce
+            req.setTimeout(120000);
             req.setBody(body);
 
             // Send HTTP request
@@ -877,7 +964,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         List<User> users = [
             SELECT Id, Name, Phone, MobilePhone
             FROM User
-            WHERE IsActive = true
+            WHERE IsActive = true AND ContactId = null
         ];
     
         for (User user : users) {

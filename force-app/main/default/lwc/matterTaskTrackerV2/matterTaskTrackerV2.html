@@ -1,0 +1,487 @@
+<template>
+    <div class="task-tracker-root">
+
+        <!-- ── Error state ────────────────────────────────────────────── -->
+        <template if:true={error}>
+            <div class="slds-notify slds-notify_alert slds-theme_error" role="alert">
+                <span class="slds-assistive-text">Error</span>
+                <h2>{error}</h2>
+            </div>
+        </template>
+
+        <!-- ── Skeleton loading ───────────────────────────────────────── -->
+        <template if:true={isLoading}>
+            <div class="skeleton-container">
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+                <div class="skeleton-row"></div>
+            </div>
+        </template>
+
+        <!-- ── Empty state ────────────────────────────────────────────── -->
+        <template if:false={isLoading}>
+            <template if:true={isEmpty}>
+                <div class="empty-state">
+                    <lightning-icon icon-name="utility:info" size="small" alternative-text="No tasks"></lightning-icon>
+                    <p>No tasks on this matter yet.</p>
+                </div>
+            </template>
+
+            <!-- ── Workflow accordion list ────────────────────────────── -->
+            <template if:false={isEmpty}>
+                <div class="workflows-list">
+                    <template for:each={workflowViews} for:item="wfv">
+                        <div key={wfv.id} class="workflow-card">
+
+                            <!-- Accordion header -->
+                            <button
+                                class="workflow-header"
+                                data-id={wfv.id}
+                                onclick={handleToggleWorkflow}
+                                type="button">
+                                <lightning-icon
+                                    icon-name="utility:chevronright"
+                                    size="x-small"
+                                    class={wfv.chevronClass}>
+                                </lightning-icon>
+                                <div class="workflow-header-body">
+                                    <div class="workflow-name">{wfv.name}</div>
+                                    <div class="workflow-progress-track">
+                                        <div class="workflow-progress-fill" style={wfv.progressStyle}></div>
+                                    </div>
+                                </div>
+                                <div class="workflow-progress-text">
+                                    {wfv.completedCount} / {wfv.totalCount} tasks complete
+                                </div>
+                            </button>
+
+                            <!-- Accordion body -->
+                            <template if:true={wfv.isOpen}>
+                                <div class="workflow-body">
+
+                                    <!-- View switcher -->
+                                    <div class="view-switcher">
+                                        <template for:each={wfv.viewOptions} for:item="opt">
+                                            <button
+                                                key={opt.id}
+                                                class={opt.btnClass}
+                                                data-workflow={wfv.id}
+                                                data-view={opt.id}
+                                                onclick={handleSwitchView}
+                                                type="button">
+                                                {opt.label}
+                                            </button>
+                                        </template>
+                                    </div>
+
+                                    <!-- Role filter + controls (swimlane and gantt only) -->
+                                    <template if:true={wfv.showControlsRow}>
+                                        <div class="controls-row">
+                                            <div class="role-filter">
+                                                <span class="filter-label">Filter by role:</span>
+                                                <button
+                                                    class={wfv.allPillClass}
+                                                    data-workflow={wfv.id}
+                                                    onclick={handleClearRoleFilter}
+                                                    type="button">
+                                                    All
+                                                </button>
+                                                <template for:each={wfv.rolePills} for:item="rp">
+                                                    <button
+                                                        key={rp.id}
+                                                        class={rp.pillClass}
+                                                        style={rp.pillStyle}
+                                                        data-workflow={wfv.id}
+                                                        data-role={rp.id}
+                                                        onclick={handleRoleFilter}
+                                                        type="button">
+                                                        {rp.label}
+                                                    </button>
+                                                </template>
+                                            </div>
+                                            <template if:true={wfv.showDepsBtn}>
+                                                <div class="swimlane-toggles">
+                                                    <button
+                                                        class={wfv.depsBtnClass}
+                                                        data-workflow={wfv.id}
+                                                        onclick={handleToggleDeps}
+                                                        type="button">
+                                                        <template if:true={wfv.showDeps}>Hide</template>
+                                                        <template if:false={wfv.showDeps}>Show</template>
+                                                        Dependencies
+                                                    </button>
+                                                    <button
+                                                        class={wfv.completedBtnClass}
+                                                        data-workflow={wfv.id}
+                                                        onclick={handleToggleCompleted}
+                                                        type="button">
+                                                        <template if:true={wfv.showCompleted}>Hide Completed</template>
+                                                        <template if:false={wfv.showCompleted}>Show Completed</template>
+                                                    </button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
+                                    <!-- Timeline view -->
+                                    <template if:true={wfv.isTimeline}>
+                                        <div class="chart-scroll">
+                                            <svg
+                                                class="timeline-svg"
+                                                width={wfv.timelineWidth}
+                                                height={wfv.timelineHeight}
+                                                lwc:dom="manual"
+                                                data-timeline-id={wfv.id}>
+                                            </svg>
+                                        </div>
+                                    </template>
+
+                                    <!-- Swimlane chart -->
+                                    <template if:true={wfv.isSwimlane}>
+                                        <div class="chart-scroll">
+                                            <svg
+                                                class="swimlane-svg"
+                                                width={wfv.chartWidth}
+                                                height={wfv.chartHeight}
+                                                lwc:dom="manual"
+                                                data-chart-id={wfv.id}>
+                                            </svg>
+                                        </div>
+                                        <div class="swimlane-legend">
+                                            <span class="legend-label">Legend:</span>
+                                            <div class="legend-item">
+                                                <div class="legend-swatch legend-swatch-solid"></div>
+                                                <span>Due date set</span>
+                                            </div>
+                                            <div class="legend-item">
+                                                <div class="legend-swatch legend-swatch-dashed"></div>
+                                                <span>No due date</span>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Gantt view (single-row-per-task) -->
+                                    <template if:true={wfv.isGantt}>
+                                        <div class="chart-scroll">
+                                            <svg
+                                                class="gantt-svg"
+                                                width={wfv.ganttWidth}
+                                                height={wfv.ganttHeight}
+                                                lwc:dom="manual"
+                                                data-gantt-id={wfv.id}>
+                                            </svg>
+                                        </div>
+                                    </template>
+
+                                    <!-- My Tasks view -->
+                                    <template if:true={wfv.isMyTasks}>
+                                        <div class="mytasks-view">
+                                            <div class="mytasks-role-tabs">
+                                                <button
+                                                    class={wfv.myTasksAllTabClass}
+                                                    data-workflow={wfv.id}
+                                                    data-role=""
+                                                    onclick={handleMyTasksRole}
+                                                    type="button">
+                                                    All
+                                                </button>
+                                                <template for:each={wfv.rolePills} for:item="rt">
+                                                    <button
+                                                        key={rt.id}
+                                                        class={rt.tabClass}
+                                                        style={rt.tabStyle}
+                                                        data-workflow={wfv.id}
+                                                        data-role={rt.id}
+                                                        onclick={handleMyTasksRole}
+                                                        type="button">
+                                                        {rt.label}
+                                                    </button>
+                                                </template>
+                                            </div>
+                                            <div class="mytasks-list">
+                                                <template for:each={wfv.myTasks} for:item="mt">
+                                                    <div key={mt.id} class={mt.cardClass} style={mt.cardStyle}
+                                                         data-id={mt.id} onclick={handleOpenTask}>
+                                                        <div class="mytask-left">
+                                                            <div class="mytask-name">{mt.name}</div>
+                                                            <div class="mytask-meta">
+                                                                <span class="mytask-phase">{mt.phaseName}</span>
+                                                                <template if:true={mt.dueDateLabel}>
+                                                                    <span>·</span>
+                                                                    <span>{mt.dueDateLabel}</span>
+                                                                </template>
+                                                            </div>
+                                                        </div>
+                                                        <lightning-icon
+                                                            icon-name={mt.statusIcon}
+                                                            size="x-small"
+                                                            class={mt.statusIconClass}>
+                                                        </lightning-icon>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Status Summary view -->
+                                    <template if:true={wfv.isSummary}>
+                                        <div class="summary-view">
+
+                                            <!-- Stat cards -->
+                                            <div class="summary-stats">
+                                                <div class="stat-card stat-complete">
+                                                    <div class="stat-num">{wfv.completedCount}</div>
+                                                    <div class="stat-label">Completed</div>
+                                                </div>
+                                                <div class="stat-card stat-pending">
+                                                    <div class="stat-num">{wfv.remainingCount}</div>
+                                                    <div class="stat-label">Remaining</div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Overall progress -->
+                                            <div class="summary-overall">
+                                                <div class="summary-overall-header">
+                                                    <span class="summary-section-title">Overall Progress</span>
+                                                    <span class="summary-overall-label">{wfv.overallLabel}</span>
+                                                </div>
+                                                <div class="summary-bar-track">
+                                                    <div class="summary-bar-fill" style={wfv.overallFillStyle}></div>
+                                                </div>
+                                            </div>
+
+                                            <!-- By phase -->
+                                            <div class="summary-breakdown">
+                                                <div class="summary-section-title">By Phase</div>
+                                                <template for:each={wfv.phaseSummaries} for:item="ps">
+                                                    <div key={ps.id} class="summary-breakdown-row">
+                                                        <span class="summary-breakdown-name">{ps.name}</span>
+                                                        <div class="summary-bar-track">
+                                                            <div class="summary-bar-fill" style={ps.fillStyle}></div>
+                                                        </div>
+                                                        <span class="summary-breakdown-count">{ps.countLabel}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                            <!-- By role -->
+                                            <div class="summary-breakdown">
+                                                <div class="summary-section-title">By Role</div>
+                                                <template for:each={wfv.roleSummaries} for:item="rs">
+                                                    <div key={rs.id} class="summary-breakdown-row">
+                                                        <div class="summary-role-name">
+                                                            <span class="summary-role-dot" style={rs.dotStyle}></span>
+                                                            <span class="summary-breakdown-name">{rs.label}</span>
+                                                        </div>
+                                                        <div class="summary-bar-track">
+                                                            <div class="summary-bar-fill" style={rs.fillStyle}></div>
+                                                        </div>
+                                                        <span class="summary-breakdown-count">{rs.countLabel}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                        </div>
+                                    </template>
+
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </template>
+
+        <!-- ── Task Detail Panel (slide-in, fixed to right) ──────────── -->
+        <template if:true={selectedTask}>
+            <div class="task-panel-backdrop" onclick={handleClosePanel}></div>
+            <aside class="task-panel">
+                <header class="task-panel-header">
+                    <span class="task-role-pill" style={selectedTask.rolePillStyle}>
+                        {selectedTask.role}
+                    </span>
+                    <button class="close-btn" onclick={handleClosePanel} type="button">×</button>
+                </header>
+                <div class="task-panel-title-wrap">
+                    <h3 class="task-panel-title">{selectedTask.name}</h3>
+                    <div class="task-panel-phase">{selectedTask.phaseName}</div>
+                </div>
+
+                <div class="task-panel-body">
+
+                    <!-- Instructions -->
+                    <div class="field-group">
+                        <div class="field-label">Instructions</div>
+                        <template if:true={selectedTask.instructions}>
+                            <div class="field-value instructions-text">{selectedTask.instructions}</div>
+                        </template>
+                        <template if:false={selectedTask.instructions}>
+                            <div class="field-value field-empty">No instructions provided.</div>
+                        </template>
+                    </div>
+
+                    <!-- Due Date — editable -->
+                    <div class="field-group">
+                        <div class="field-label">Due Date</div>
+                        <template if:false={isEditingDueDate}>
+                            <div class="field-row">
+                                <template if:true={selectedTask.dueDateLabel}>
+                                    <span class="field-value">{selectedTask.dueDateLabel}</span>
+                                </template>
+                                <template if:false={selectedTask.dueDateLabel}>
+                                    <span class="field-value field-empty">Not yet scheduled</span>
+                                </template>
+                                <lightning-button
+                                    variant="base"
+                                    label="Edit"
+                                    onclick={handleEditDueDateClick}>
+                                </lightning-button>
+                            </div>
+                        </template>
+                        <template if:true={isEditingDueDate}>
+                            <div class="due-date-edit">
+                                <lightning-input
+                                    type="date"
+                                    label=""
+                                    value={selectedTask.dueDate}
+                                    onchange={handleDueDateChange}>
+                                </lightning-input>
+                                <lightning-button
+                                    variant="base"
+                                    label="Cancel"
+                                    onclick={handleCancelDueDate}>
+                                </lightning-button>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Assigned To (read-only) -->
+                    <div class="field-group">
+                        <div class="field-label">Assigned To</div>
+                        <span class="field-value">{selectedTask.ownerName}</span>
+                    </div>
+
+                    <!-- Estimated Hours -->
+                    <template if:true={selectedTask.showHours}>
+                        <div class="field-group">
+                            <div class="field-label">Estimated Hours</div>
+                            <span class="field-value">{selectedTask.estimatedHours} hrs</span>
+                        </div>
+                    </template>
+
+                    <!-- Record links -->
+                    <div class="panel-record-links">
+                        <button class="record-link-btn" onclick={handleNavigateToTask} type="button">
+                            <lightning-icon icon-name="standard:task" size="x-small"></lightning-icon>
+                            View Task Record
+                        </button>
+                        <button class="record-link-btn" onclick={handleNavigateToCase} type="button">
+                            <lightning-icon icon-name="standard:case" size="x-small"></lightning-icon>
+                            View Case Record
+                        </button>
+                    </div>
+
+                    <!-- Action buttons: Mark Complete (open tasks) / Reopen (closed tasks) -->
+                    <div class="panel-actions">
+                        <template if:false={selectedTask.isClosed}>
+                            <lightning-button
+                                variant="brand"
+                                label="Mark Complete"
+                                icon-name="utility:check"
+                                onclick={handleMarkComplete}>
+                            </lightning-button>
+                        </template>
+                        <template if:true={selectedTask.isClosed}>
+                            <lightning-button
+                                variant="neutral"
+                                label="Reopen Task"
+                                icon-name="utility:undo"
+                                onclick={handleReopenTask}>
+                            </lightning-button>
+                        </template>
+                    </div>
+
+                    <!-- Dependencies section — Triggered By -->
+                    <template if:true={selectedTask.hasIncoming}>
+                        <div class="deps-section">
+                            <div class="field-label">Triggered By</div>
+                            <template for:each={selectedTask.incomingDeps} for:item="dep">
+                                <div key={dep.key} class={dep.cardClass}>
+                                    <div class="dep-task-name">{dep.taskName}</div>
+                                    <div class="dep-meta">{dep.label}</div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Dependencies section — Triggers -->
+                    <template if:true={selectedTask.hasOutgoing}>
+                        <div class="deps-section">
+                            <div class="field-label">Triggers</div>
+                            <template for:each={selectedTask.outgoingDeps} for:item="dep">
+                                <div key={dep.key} class="dep-card dep-card-outgoing">
+                                    <div class="dep-task-name">{dep.taskName}</div>
+                                    <div class="dep-meta">{dep.label}</div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </aside>
+        </template>
+
+        <!-- ── "Mark Task Complete" status modal ──────────────────────── -->
+        <template if:true={showCompletionModal}>
+            <section role="dialog" class="slds-modal slds-fade-in-open" aria-modal="true">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <h2 class="slds-modal__title">Update Task Status</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <template if:true={completionTaskName}>
+                            <p class="completion-task-name">{completionTaskName}</p>
+                        </template>
+                        <lightning-radio-group
+                            name="taskStatus"
+                            label="Select a Status"
+                            options={completionOptions}
+                            value={completionStatus}
+                            onchange={handleStatusChange}
+                            type="radio">
+                        </lightning-radio-group>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button
+                            variant="neutral"
+                            label="Cancel"
+                            onclick={handleCancelCompletion}>
+                        </lightning-button>
+                        <lightning-button
+                            variant="brand"
+                            label="Save"
+                            class="slds-m-left_x-small"
+                            disabled={isSaveDisabled}
+                            onclick={handleConfirmCompletion}>
+                        </lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+        <!-- ── Hover tooltip (absolute positioned, rendered in JS) ───── -->
+        <template if:true={hoverTooltip}>
+            <div class="task-hover-tooltip" style={hoverTooltip.style}>
+                <div>{hoverTooltip.name}</div>
+                <template if:true={hoverTooltip.showHours}>
+                    <div class="tooltip-hours">
+                        <lightning-icon icon-name="utility:clock" size="xx-small"></lightning-icon>
+                        {hoverTooltip.hours} hrs
+                    </div>
+                </template>
+            </div>
+        </template>
+
+    </div>
+</template>

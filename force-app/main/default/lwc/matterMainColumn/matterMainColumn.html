@@ -1,0 +1,89 @@
+<template>
+    
+    <div class="main-header">
+        <span>My Family Law Matter</span>
+        <span class="header-arrow">▲</span>
+    </div>
+
+    <div class="slds-grid slds-wrap">
+        
+        <template if:true={dashboardData.showQuestionnaire}>
+            <div class="slds-col slds-size_1-of-1">
+                <div class="content-block">
+                    <h2 class="serif-title">Complete Your Client Questionnaire</h2>
+                    <p class="body-text">
+                        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                    </p>
+                    <button class="btn-pill" onclick={handleQuestionnaireClick}>Fill Out Questionnaire</button>
+                </div>
+            </div>
+        </template>
+
+        <div class="slds-col slds-size_1-of-1">
+            <div class="content-block">
+                
+                <h2 class="serif-title">What’s Happening In My Case</h2>
+                <p class="body-text">{dashboardData.caseStatusDescription}</p>
+
+                <h2 class="serif-title">Progress Tracker</h2>
+                
+                <div class="tracker-container">
+                    <div class="tracker-step step-done">Phase 1</div>
+                    <div class="tracker-step step-current">Phase 2</div>
+                    <div class="tracker-step step-future">Phase 3</div>
+                    <div class="tracker-step step-future">Phase 4</div>
+                </div>
+
+                <div class="slds-m-bottom_medium">
+                    <div class="phase-subtitle">
+                        <span style="color:#666">Phase 2: </span> 
+                        <strong>Path to Settlement</strong>
+                    </div>
+                    <p class="body-text slds-m-top_small">
+                        You are here! In this phase we do our best to come to an agreement via settlement vs litigation.
+                    </p>
+                </div>
+
+                <h2 class="serif-title">What’s Next?</h2>
+                <p class="body-text">{dashboardData.nextStepsDescription}</p>
+                
+                <button class="btn-pill" onclick={handleTrackProgressClick}>Track My Progress</button>
+            </div>
+        </div>
+
+        <div class="slds-col slds-size_1-of-1">
+            <div class="content-block">
+                <h2 class="serif-title">My Documents</h2>
+                <p class="body-text">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                </p>
+
+                <div class="search-container">
+                    <lightning-input type="search" variant="label-hidden" placeholder="Search..." class="slds-size_10-of-12"></lightning-input>
+                    <div class="slds-size_2-of-12 slds-text-align_center">
+                        <span style="font-weight:bold; color:#0061D5;">box</span>
+                    </div>
+                </div>
+
+                <div class="slds-border_bottom slds-p-vertical_small slds-grid slds-grid_vertical-align-center">
+                    <div class="slds-col slds-grow">
+                        <lightning-icon icon-name="doctype:folder" size="small" class="slds-m-right_small"></lightning-icon>
+                        Assets
+                    </div>
+                    <div><span class="slds-badge slds-theme_warning">High</span></div>
+                    <div class="slds-m-left_small"><span class="slds-badge">Not Started</span></div>
+                </div>
+                 <div class="slds-p-vertical_small slds-grid slds-grid_vertical-align-center">
+                    <div class="slds-col slds-grow">
+                        <lightning-icon icon-name="doctype:folder" size="small" class="slds-m-right_small"></lightning-icon>
+                        Financial Accounts
+                    </div>
+                    <div><span class="slds-badge slds-theme_warning">Medium</span></div>
+                    <div class="slds-m-left_small"><span class="slds-badge slds-theme_success">In Progress</span></div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</template>

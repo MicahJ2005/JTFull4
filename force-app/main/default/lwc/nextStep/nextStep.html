@@ -1,0 +1,117 @@
+<template>
+    <lightning-card title="Create Next Step" icon-name="standard:opportunity">
+        <span slot="actions" class="slds-text-color_weak slds-text-body_small">
+            {buildTag}
+        </span>
+        <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+
+            <template lwc:if={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <template lwc:if={initError}>
+                <div class="slds-text-color_error slds-p-vertical_small" role="alert">
+                    {initError}
+                </div>
+            </template>
+
+            <template lwc:if={actionError}>
+                <div class="slds-box slds-theme_error slds-m-bottom_small" role="alert">
+                    <strong>Something went wrong:</strong> {actionError}
+                </div>
+            </template>
+
+            <!-- ===== STEP 1: SELECT ===== -->
+            <template lwc:if={isSelectStep}>
+                <template lwc:if={productOptions.length}>
+                    <lightning-dual-listbox
+                        name="products"
+                        label="Product"
+                        source-label="Available"
+                        selected-label="Selected"
+                        field-level-help="Select one or more Task Tracker templates to scope."
+                        options={productOptions}
+                        value={selectedTemplateIds}
+                        required
+                        onchange={handleProductChange}>
+                    </lightning-dual-listbox>
+
+                    <lightning-input
+                        class="slds-p-top_small"
+                        type="text"
+                        label="Next Step Name"
+                        value={stepName}
+                        required
+                        onchange={handleNameChange}>
+                    </lightning-input>
+
+                    <lightning-combobox
+                        class="slds-p-top_small"
+                        name="areaOfLaw"
+                        label="Area of Law"
+                        placeholder="Select area of law"
+                        options={areaOfLawOptions}
+                        value={areaOfLaw}
+                        required
+                        onchange={handleAreaChange}>
+                    </lightning-combobox>
+                </template>
+            </template>
+
+            <!-- ===== STEP 2: SCOPE ===== -->
+            <template lwc:if={isScopeStep}>
+                <div class="slds-m-bottom_x-small slds-text-heading_small">{scopeHeading}</div>
+                <lightning-progress-bar value={progress} size="small"></lightning-progress-bar>
+
+                <template lwc:if={isBusy}>
+                    <lightning-spinner alternative-text="Working" size="small"></lightning-spinner>
+                </template>
+
+                <div class="slds-m-top_small" style="max-height:22rem;overflow:auto;">
+                    <c-next-step-datatable
+                        key-field="id"
+                        columns={columns}
+                        data={rows}
+                        draft-values={draftValues}
+                        selected-rows={selectedRowIds}
+                        suppress-bottom-bar
+                        oncellchange={handleCellChange}
+                        onrowselection={handleRowSelection}>
+                    </c-next-step-datatable>
+                </div>
+            </template>
+
+            <!-- ===== STEP 3: DONE ===== -->
+            <template lwc:if={isDoneStep}>
+                <div class="slds-align_absolute-center slds-p-vertical_large slds-text-heading_small">
+                    <lightning-icon icon-name="action:approval" size="small" class="slds-m-right_x-small"></lightning-icon>
+                    Next Step created —
+                    <a href={opportunityUrl} onclick={handleOpportunityClick} class="slds-var-m-left_xx-small">{stepName}</a>
+                </div>
+            </template>
+        </div>
+
+        <div slot="footer" class="slds-text-align_right">
+            <template lwc:if={isSelectStep}>
+                <lightning-button
+                    variant="brand" label="Next" title="Next"
+                    disabled={isBusy} onclick={handleNext}>
+                </lightning-button>
+            </template>
+
+            <template lwc:if={isScopeStep}>
+                <lightning-button
+                    variant="success" label="Finalize Scope" title="Finalize Scope"
+                    disabled={isBusy} onclick={handleFinalize}>
+                </lightning-button>
+            </template>
+
+            <template lwc:if={isDoneStep}>
+                <lightning-button
+                    variant="neutral" label="Close" title="Close"
+                    onclick={handleClose}>
+                </lightning-button>
+            </template>
+        </div>
+    </lightning-card>
+</template>

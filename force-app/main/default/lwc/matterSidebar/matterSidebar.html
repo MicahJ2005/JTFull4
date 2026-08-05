@@ -1,0 +1,64 @@
+<template>
+    <div class="slds-grid slds-wrap slds-gutters_small">
+        
+        <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+            <lightning-card title="My Current Tasks" icon-name="standard:task">
+                <div class="slds-p-horizontal_medium">
+                    <template if:true={dashboardData.tasks}>
+                        <template for:each={dashboardData.tasks} for:item="task">
+                            <div key={task.id} class="slds-form-element slds-m-bottom_small">
+                                <div class="slds-form-element__control">
+                                    <div class="slds-checkbox">
+                                        <input type="checkbox" name="options" id={task.id} value={task.id} />
+                                        <label class="slds-checkbox__label" for={task.id}>
+                                            <span class="slds-checkbox_faux"></span>
+                                            <span class="slds-form-element__label">{task.subject}</span>
+                                            <div class="slds-text-color_error slds-text-body_small">Due: {task.dueDate}</div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                    <div class="slds-text-align_right">
+                        <a href="#">See all tasks</a>
+                    </div>
+                </div>
+            </lightning-card>
+        </div>
+
+        <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+            <lightning-card title="Upcoming Appointments">
+                <div class="slds-p-horizontal_medium">
+                    <p class="slds-m-bottom_medium">Aquí se muestran sus próximas reuniones con el equipo legal.</p>
+                    <lightning-button class="slds-button_stretch" variant="brand" label="View Appointments"></lightning-button>
+                </div>
+            </lightning-card>
+        </div>
+
+        <div class="slds-col slds-size_1-of-1">
+            <lightning-card title="My Legal Team">
+                <div class="slds-p-horizontal_medium">
+                    <div class="slds-grid slds-wrap">
+                        <template if:true={dashboardData.legalTeam}>
+                            <template for:each={dashboardData.legalTeam} for:item="member">
+                                <div key={member.name} class="slds-col slds-size_1-of-2 slds-text-align_center slds-p-bottom_medium">
+                                    <span class="slds-avatar slds-avatar_circle slds-avatar_large">
+                                        <img alt={member.name} src={member.imgUrl} />
+                                    </span>
+                                    <div class="slds-text-heading_small slds-m-top_x-small">{member.name}</div>
+                                    <div class="slds-text-body_small slds-text-color_weak">{member.role}</div>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                    <div class="slds-m-top_small slds-grid slds-grid_vertical">
+                        <lightning-button class="slds-m-bottom_x-small" variant="brand" label="View Your Team"></lightning-button>
+                        <lightning-button variant="brand" label="Contact Your Team"></lightning-button>
+                    </div>
+                </div>
+            </lightning-card>
+        </div>
+
+    </div>
+</template>

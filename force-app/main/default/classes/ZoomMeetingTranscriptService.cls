@@ -7,9 +7,21 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
     }
 
     public static void sendZoomDataToSalesforce() {
-        String clientId = 'OlTvfeKSCuXyENCswlexQ';
-        String clientSecret = 'mJQ2SXpsBABlord50hHQVj7l40tLg3n9';
-        String accountId = 'Af5TohNeQKiIODcnyFCOyQ';
+        // String clientId = 'OlTvfeKSCuXyENCswlexQ';
+        // String clientSecret = 'mJQ2SXpsBABlord50hHQVj7l40tLg3n9';
+        // String accountId = 'Af5TohNeQKiIODcnyFCOyQ';
+
+        ZoomConfig__mdt cfg = [
+            SELECT AccountId__c, ClientId__c, ClientSecret__c, DefaultUserId__c
+            FROM   ZoomConfig__mdt
+            WHERE  DeveloperName = 'Default'
+            LIMIT  1
+        ];
+
+        String clientId = cfg.ClientId__c;
+        String clientSecret = cfg.ClientSecret__c;
+        String accountId = cfg.AccountId__c;
+        String defaultUserId = cfg.DefaultUserId__c;
 
         QueueSobject queue =[SELECT Id, QueueId, Queue.name, SobjectType FROM QueueSobject WHERE Queue.name = 'CSR Meeting Transcript' LIMIT 1];
         // Step 1: Get Zoom OAuth Token
@@ -60,6 +72,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
             req.setMethod('POST');
             req.setHeader('Authorization', 'Basic ' + encodedCredentials);
             req.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+            req.setTimeout(120000);
 
             // Add required body parameters
             req.setBody('grant_type=account_credentials&account_id=' + accountId);
@@ -78,6 +91,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
                 throw new CalloutException('Failed to get Zoom token: ' + res.getBody());
             }
         } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log('ZoomMeetingTranscriptService', 'getZoomToken', null, null, e);
             throw new CalloutException('Error during Zoom token request: ' + e.getMessage());
         }
     }
@@ -87,7 +101,7 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
         ///these Date/time parameters will give us Zoom Meetings that are within a 3hr window, starting 1 hr ago
         Datetime now = Datetime.now(); // Current datetime
         String toDateTime = now.addDays(-1).formatGMT('yyyy-MM-dd'); // 1 hour ago
-        String fromDateTime = now.addHours(-36).formatGMT('yyyy-MM-dd'); // 4 hours ago
+        String fromDateTime = now.addHours(-4).formatGMT('yyyy-MM-dd'); // 4 hours ago
         String ZOOM_MEETING_ENDPOINT = 'https://api.zoom.us/v2/users/';
         String queryParams = 'from=' + EncodingUtil.urlEncode(fromDateTime, 'UTF-8') +
                                  '&to=' + EncodingUtil.urlEncode(toDateTime, 'UTF-8') +
@@ -105,39 +119,55 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
                                             }
     
  System.debug('zoomMeetingIdsAlreadyImported: '+ zoomMeetingIdsAlreadyImported);
+        // Failures are collected and logged only after every zoomId has been attempted, rather
+        // than inserted inline - a DML statement between callouts in the same transaction would
+        // trip "You have uncommitted work pending. Please commit or rollback before calling out."
+        // on the next iteration's callout.
+        List<String> failedZoomIds = new List<String>();
+        List<Exception> failedExceptions = new List<Exception>();
         for(String zoomId: zoomUserIdsToUserMap.keySet()){
-            
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(ZOOM_MEETING_ENDPOINT + zoomId + '/recordings?'+queryParams);
-            req.setHeader('Authorization', 'Bearer ' + token);
-            req.setMethod('GET');
-            Http http = new Http();
-            HttpResponse res = http.send(req);
-            system.debug('res: '+ res.getBody());
-            Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+            try {
+                HttpRequest req = new HttpRequest();
+                req.setEndpoint(ZOOM_MEETING_ENDPOINT + zoomId + '/recordings?'+queryParams);
+                req.setHeader('Authorization', 'Bearer ' + token);
+                req.setMethod('GET');
+                req.setTimeout(120000);
+                Http http = new Http();
+                HttpResponse res = http.send(req);
+                system.debug('res: '+ res.getBody());
+                Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
 
-            RecordingWrapper wrappedData = parseJson(res.getBody());
-            for(Meeting meeting : wrappedData.meetings) {
-                if(!zoomMeetingIdsAlreadyImported.contains(meeting.uuid)){
-                    system.debug('This is a new Transcript ' + meeting.uuid + ' Keep it...');
-                    system.debug('This is the Zoom Event Id ' + meeting.id + ' YEAH!!');
-                    for (RecordingFile file : meeting.recording_files) {
-                        if(file.file_type == 'TRANSCRIPT'){
-                            if(userToTranscriptFileMap.containsKey(zoomId+'#'+meeting.id)){
-                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
+                RecordingWrapper wrappedData = parseJson(res.getBody());
+                if(wrappedData.meetings != null){
+                    for(Meeting meeting : wrappedData.meetings) {
+                        if(!zoomMeetingIdsAlreadyImported.contains(meeting.uuid)){
+                            system.debug('This is a new Transcript ' + meeting.uuid + ' Keep it...');
+                            system.debug('This is the Zoom Event Id ' + meeting.id + ' YEAH!!');
+                            for (RecordingFile file : meeting.recording_files) {
+                                if(file.file_type == 'TRANSCRIPT'){
+                                    if(userToTranscriptFileMap.containsKey(zoomId+'#'+meeting.id)){
+                                        userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
+                                    }
+                                    else{
+                                        userToTranscriptFileMap.put(zoomId+'#'+meeting.id, new List<RecordingFile>());
+                                        userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
+                                    }
+
+                                }
                             }
-                            else{
-                                userToTranscriptFileMap.put(zoomId+'#'+meeting.id, new List<RecordingFile>());
-                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
-                            }
-                            
+                        }
+                        else{
+                            system.debug('Transcript Already Exists for ' + meeting.uuid + ' skipping...');
                         }
                     }
                 }
-                else{
-                    system.debug('Transcript Already Exists for ' + meeting.uuid + ' skipping...');
-                }
+            } catch (Exception e) {
+                failedZoomIds.add(zoomId);
+                failedExceptions.add(e);
             }
+        }
+        for (Integer i = 0; i < failedZoomIds.size(); i++) {
+            ZoomIntegrationErrorLogger.log('ZoomMeetingTranscriptService', 'getRecentMeetings', failedZoomIds[i], null, failedExceptions[i]);
         }
         return userToTranscriptFileMap;
     }
@@ -148,15 +178,17 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
         HttpRequest req = new HttpRequest();
         req.setEndpoint(transcriptUrl);
         req.setHeader('Authorization', 'Bearer ' + token);
-        req.setMethod('GET'); 
+        req.setMethod('GET');
+        req.setTimeout(120000);
         Http http = new Http();
         HttpResponse res = http.send(req);
         system.debug('response 1 Header: '+ res);
         System.debug('res1: '+ res.getHeader('location'));
         if (res.getStatusCode() == 302) {
             req.setEndpoint(res.getHeader('location'));
+            req.setTimeout(120000);
             res = http.send(req);
-            // System.debug('res2: '+ res.getBody());
+            System.debug('res2: '+ res.getBody());
             if (res.getStatusCode() == 200) {
                 string vttContent = extractPlainTextFromVTT(res.getBody());
                 return vttContent;

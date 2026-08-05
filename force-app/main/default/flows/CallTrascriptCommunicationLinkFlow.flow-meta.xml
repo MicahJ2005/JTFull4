@@ -527,9 +527,16 @@
         <connector>
             <targetReference>relatedOppsOnAccountLoop</targetReference>
         </connector>
-        <filterLogic>and</filterLogic>
+        <filterLogic>or</filterLogic>
         <filters>
             <field>AcctSeed__Account__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Voice_Call__r.RelatedRecordId</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Contact__c</field>
             <operator>EqualTo</operator>
             <value>
                 <elementReference>$Record.Voice_Call__r.RelatedRecordId</elementReference>
@@ -613,9 +620,16 @@
         <connector>
             <targetReference>getRelatedMattersForAccount</targetReference>
         </connector>
-        <filterLogic>and</filterLogic>
+        <filterLogic>1 OR 2</filterLogic>
         <filters>
             <field>AccountId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Voice_Call__r.RelatedRecordId</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Contact_ID__c</field>
             <operator>EqualTo</operator>
             <value>
                 <elementReference>$Record.Voice_Call__r.RelatedRecordId</elementReference>

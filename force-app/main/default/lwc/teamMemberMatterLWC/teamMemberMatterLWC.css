@@ -1,0 +1,380 @@
+.team-hub-container {
+    padding: 1rem;
+    background-color: #f3f3f3;
+}
+
+/* Section Header */
+.matter-section {
+    margin-bottom: 2rem;
+}
+
+.section-header {
+    background: linear-gradient(135deg, #1e5a7d 0%, #2d6f8f 100%);
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.section-header:hover {
+    background: linear-gradient(135deg, #2d6f8f 0%, #1e5a7d 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.section-title {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.toggle-icon {
+    fill: white;
+}
+
+/* Team Cards Grid */
+.team-cards-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 1rem;
+    background-color: transparent;
+    border-radius: 0 0 4px 4px;
+    justify-content: center; 
+}
+
+.team-member-card {
+    background: white;
+    border: none;
+    border-radius: 8px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    flex: 0 1 calc(20% - 1.5rem); 
+    min-width: 220px; 
+    max-width: 280px; 
+}
+
+.team-member-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Profile Picture */
+.profile-picture-container {
+    width: 180px;
+    height: 180px;
+    margin: 0 auto 1.25rem;
+    border: 5px solid #1e5a7d;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+}
+
+.profile-picture {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-picture-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #e8ebed;
+}
+
+/* Member Info */
+.member-info {
+    margin-bottom: 1rem;
+}
+
+.member-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #000000;
+    margin: 0 0 0.5rem 0;
+}
+
+.member-title {
+    font-size: 0.875rem;
+    color: #e89a3c;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+/* Button */
+.button-container {
+    margin-top: 1rem;
+}
+
+.view-profile-btn {
+    width: 100%;
+    min-width: 160px;
+}
+
+/* Contact Section */
+.contact-section {
+    background: white;
+    padding: 2rem;
+    border-radius: 4px;
+    margin-top: 2rem;
+}
+
+.contact-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 3rem;
+    align-items: start;
+}
+
+.contact-text-content {
+    padding-right: 1rem;
+}
+
+.contact-title {
+    font-size: 2.25rem;
+    font-weight: 900;
+    color: #000000;
+    margin: 0 0 1rem 0;
+    line-height: 1.2;
+}
+
+.contact-description {
+    color: #3e3e3c;
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+.contact-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+
+.contact-action-card {
+    background: #1e5a7d;
+    border: none;
+    border-radius: 12px;
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.contact-action-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(30, 90, 125, 0.3);
+}
+
+.contact-icon-container {
+    width: 65px;
+    height: 65px;
+    margin: 0 auto 0.75rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: white;
+    flex-shrink: 0;
+}
+
+.contact-icon-container lightning-icon {
+    --slds-c-icon-color-foreground-default: #1e5a7d;
+}
+
+.icon-blue {
+    color: #1e5a7d;
+}
+
+.action-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: white;
+    margin: 0 0 0.5rem 0;
+    line-height: 1.2;
+}
+
+.action-description {
+    font-size: 0.8125rem;
+    color: white;
+    margin: 0 0 0.75rem 0;
+    line-height: 1.3;
+    opacity: 0.95;
+}
+
+.contact-button {
+    background-color: white;
+    color: #1e5a7d;
+    border: 2px solid white;
+    border-radius: 4px;
+    padding: 0.4rem 1.25rem !important;
+    font-weight: 700 !important;
+    font-size: 0.8125rem !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: none;
+    width: 100%; 
+    max-width: 100%;
+    box-shadow: none !important;
+    margin-top: auto;
+    height: auto;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0.9;
+    white-space: nowrap;
+}
+
+.contact-button:hover {
+    background-color: #f0f0f0;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Phone Dropdown Styles */
+.phone-dropdown-wrapper {
+    width: 100%;
+    margin-top: auto;
+}
+
+.phone-dropdown-toggle {
+    background-color: white;
+    color: #1e5a7d;
+    border: 2px solid white;
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    min-width: 130px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    line-height: 1;
+}
+
+.phone-dropdown-toggle:hover {
+    background-color: #f0f0f0;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.phone-dropdown-toggle .chevron-icon {
+    flex-shrink: 0;
+}
+
+.phone-dropdown-content {
+    background-color: white;
+    border-radius: 6px;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideDown 0.3s ease;
+    width: 100%;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.phone-number-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: #1e5a7d;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.phone-number-display.no-phone {
+    color: #666;
+    font-style: italic;
+}
+
+.phone-number-display lightning-icon {
+    --slds-c-icon-color-foreground-default: #1e5a7d;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .contact-layout {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .contact-actions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .team-cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+    
+    .contact-actions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .section-title {
+        font-size: 1.25rem;
+    }
+}
+
+.member-title {
+    font-size: 0.875rem;
+    color: #d4a017; 
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    margin: 0;
+    line-height: 1.4;
+    min-height: 42px; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.create-message-button {
+    background-color: white;
+    color: #1e5a7d;
+    border: 2px solid white;
+    border-radius: 4px;
+    font-weight: 700 !important;
+    font-size: 0.8125rem !important;
+    min-height: 36px !important;
+    width: 100%; 
+    max-width: 100%;
+    padding: 0.2rem 0.75rem !important;
+    line-height: 1 !important;
+    height: auto !important;
+    align-items: center;
+}

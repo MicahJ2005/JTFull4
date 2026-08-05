@@ -1,0 +1,814 @@
+/* ============================================================================
+ * matterTaskTracker.css
+ *
+ * Styles for the Matter Task Tracker LWC. Mirrors the React prototype's
+ * visual system:
+ *   - Solid-filled role pills (lane labels + filter pills when active)
+ *   - 3-state task color coding (active / pending / completed)
+ *   - Warm, refined palette; rounded corners; soft shadows
+ *
+ * Uses SLDS design tokens where sensible and falls back to literal hex
+ * for brand-specific colors (sage/sky/coral/amber) that aren't in SLDS.
+ * ========================================================================== */
+
+:host {
+    display: block;
+    font-family: 'Salesforce Sans', Arial, sans-serif;
+    color: #2a2a2a;
+    background: #fff;
+}
+
+.task-tracker-root {
+    position: relative;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+
+/* ── Loading + empty states ──────────────────────────────────────────────── */
+
+.skeleton-container {
+    padding: 1.5rem;
+}
+.skeleton-row {
+    height: 48px;
+    background: linear-gradient(90deg, #f0f0f0 0%, #f8f8f8 50%, #f0f0f0 100%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+@keyframes skeleton-pulse {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.empty-state {
+    padding: 4rem 2rem;
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+.empty-state lightning-icon { margin-bottom: 0.75rem; }
+
+
+/* ── Workflow accordion ──────────────────────────────────────────────────── */
+
+.workflows-list {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    background: #fafafa;
+}
+
+.workflow-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.workflow-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: #f8f8f8;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.workflow-header:hover {
+    background: #f2f2f2;
+}
+
+.chevron {
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+.chevron-open { transform: rotate(90deg); }
+
+.workflow-header-body {
+    flex: 1;
+    min-width: 0;
+}
+.workflow-name {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #111827;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.workflow-progress-track {
+    height: 3px;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.workflow-progress-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 999px;
+}
+
+.workflow-progress-text {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #6b7280;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.workflow-body {
+    border-top: 1px solid #e5e7eb;
+    background: #fff;
+}
+
+
+/* ── View switcher ───────────────────────────────────────────────────────── */
+
+.view-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem 0.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.view-btn {
+    padding: 0.375rem 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 8px;
+    border: none;
+    background: #f3f4f6;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.view-btn:hover { background: #e5e7eb; }
+.view-btn-active {
+    background: #111827;
+    color: #fff;
+}
+
+
+/* ── Role filter + controls row ──────────────────────────────────────────── */
+
+.controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    background: #fff;
+}
+
+.role-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.filter-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-right: 0.25rem;
+}
+
+.role-pill,
+.role-pill-all {
+    padding: 0.375rem 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    background: #f3f4f6;
+    color: #6b7280;
+}
+.role-pill:hover,
+.role-pill-all:hover {
+    filter: brightness(0.95);
+}
+.role-pill-active {
+    /* color/background overridden inline by inline style prop for the
+       role's solid-filled state */
+}
+.role-pill-all.role-pill-active {
+    background: #111827;
+    color: #fff;
+}
+
+.swimlane-toggles {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.deps-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 12px;
+    border: none;
+    background: #f3f4f6;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+.deps-btn-on {
+    background: #7A9B7E;
+    color: #fff;
+}
+
+/* Swimlane legend */
+.swimlane-legend {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.375rem 1.25rem 0.625rem;
+    font-size: 0.6875rem;
+    color: #6b7280;
+}
+.legend-label {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.25rem;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+.legend-swatch-solid {
+    width: 26px;
+    height: 14px;
+    border-radius: 4px;
+    background: #7A9B7E;
+    border: 2px solid #5A7B5E;
+}
+.legend-swatch-dashed {
+    width: 26px;
+    height: 14px;
+    border-radius: 4px;
+    background: #E8F0E9;
+    border: 2px dashed #7A9B7E;
+}
+
+
+/* ── Chart scroll containers ─────────────────────────────────────────────── */
+
+.chart-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: #fff;
+    padding: 0.5rem 0;
+}
+.chart-scroll .swimlane-svg,
+.chart-scroll .gantt-svg {
+    display: block;
+}
+
+
+/* ── My Tasks view ───────────────────────────────────────────────────────── */
+
+.mytasks-view {
+    padding: 1rem 1.25rem;
+}
+
+.mytasks-role-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.mytasks-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    background: #f3f4f6;
+    color: #6b7280;
+}
+.mytasks-tab:hover {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+}
+.mytasks-tab-active {
+    /* background/color/border overridden by inline tabStyle for role tabs;
+       for the All tab, handled separately below */
+}
+.mytasks-tab.mytasks-tab-active:not([style]) {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+}
+
+.mytasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.mytask-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.mytask-card:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+.mytask-card-done {
+    opacity: 0.65;
+}
+.mytask-card-done .mytask-name {
+    text-decoration: line-through;
+}
+
+.mytask-left {
+    flex: 1;
+    min-width: 0;
+}
+.mytask-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #111827;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mytask-meta {
+    font-size: 0.75rem;
+    color: #6b7280;
+    display: flex;
+    gap: 0.375rem;
+}
+.mytask-phase {
+    font-weight: 500;
+}
+
+.status-icon        { --sds-c-icon-color-foreground-default: #6b7280; }
+.status-icon-done   { --sds-c-icon-color-foreground-default: #22C55E; }
+
+
+/* ── Status Summary view ─────────────────────────────────────────────────── */
+
+.summary-view {
+    padding: 1.5rem 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+}
+
+/* Stat cards row */
+.summary-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+.stat-card {
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: center;
+    border: 1px solid #e5e7eb;
+}
+.stat-card .stat-num {
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 0.375rem;
+    font-variant-numeric: tabular-nums;
+}
+.stat-card .stat-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+.stat-complete  { background: #E8F0E9; border-color: #7A9B7E; }
+.stat-complete  .stat-num { color: #5A7B5E; }
+.stat-active    { background: #D8E8F5; border-color: #2878A6; }
+.stat-active    .stat-num { color: #1F5E85; }
+.stat-pending   { background: #F5EDD4; border-color: #D4A853; }
+.stat-pending   .stat-num { color: #8E6F2E; }
+.stat-deadline  { background: #F5E0D8; border-color: #C07058; }
+.stat-deadline  .stat-num { color: #9A5544; }
+
+/* Section title (shared) */
+.summary-section-title {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 0.75rem;
+}
+
+/* Overall progress */
+.summary-overall-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+}
+.summary-overall-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Shared progress bar track + fill */
+.summary-bar-track {
+    height: 5px;
+    background: #f3f4f6;
+    border-radius: 999px;
+    overflow: hidden;
+    flex: 1;
+}
+.summary-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+
+/* Breakdown sections (By Phase, By Role) */
+.summary-breakdown {
+    display: flex;
+    flex-direction: column;
+}
+.summary-breakdown-row {
+    display: grid;
+    grid-template-columns: 220px 1fr 60px;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+.summary-breakdown-row:last-child { border-bottom: none; }
+
+.summary-breakdown-name {
+    font-size: 0.875rem;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.summary-breakdown-count {
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Role dot */
+.summary-role-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.summary-role-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Upcoming deadlines */
+.deadline-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+.deadline-row:last-child { border-bottom: none; }
+.deadline-row-past { opacity: 0.45; }
+.deadline-meta {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+.deadline-phase {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+.deadline-date {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+
+/* ── Task Detail Panel (slide-in right) ──────────────────────────────────── */
+
+.task-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.2);
+    z-index: 99;
+    animation: fade-in 0.2s ease;
+}
+@keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.task-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 380px;
+    background: #fff;
+    border-left: 1px solid #e5e7eb;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    overflow-y: auto;
+    animation: slide-in 0.25s ease;
+    display: flex;
+    flex-direction: column;
+}
+@keyframes slide-in {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+
+.task-panel-header {
+    padding: 1.5rem 1.5rem 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.task-role-pill {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.625rem;
+    border-radius: 6px;
+    display: inline-block;
+}
+.close-btn {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0.25rem;
+}
+.close-btn:hover { color: #111827; }
+
+.task-panel-title-wrap {
+    padding: 0.75rem 1.5rem 1.25rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+.task-panel-title {
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: #111827;
+    margin: 0 0 0.25rem;
+}
+.task-panel-phase {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+
+.task-panel-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+.field-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+.field-value {
+    font-size: 0.875rem;
+    color: #111827;
+    line-height: 1.5;
+}
+.field-empty {
+    font-style: italic;
+    color: #9ca3af;
+}
+.field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.instructions-text {
+    white-space: pre-line;
+    font-weight: 400;
+}
+
+.due-date-edit {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.panel-record-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e5e7eb;
+}
+.record-link-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+}
+.record-link-btn:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #111827;
+}
+
+.panel-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.deps-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+.dep-card {
+    padding: 0.75rem;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    background: #f3f4f6;
+}
+.dep-card-completion { background: #E8F0E9; }
+.dep-card-duedate    { background: #F5E0D8; }
+.dep-card-outgoing   { background: #f3f4f6; }
+.dep-task-name {
+    font-weight: 500;
+    color: #111827;
+    margin-bottom: 0.125rem;
+}
+.dep-meta {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+
+/* ── Completion modal ────────────────────────────────────────────────────── */
+
+.completion-task-name {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: -0.5rem 0 0.75rem;
+}
+
+
+/* ── Hover tooltip ───────────────────────────────────────────────────────── */
+
+.task-hover-tooltip {
+    position: absolute;
+    z-index: 90;
+    pointer-events: none;
+    background: hsl(210, 15%, 15%);
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translate(-50%, -100%);
+    max-width: 280px;
+    line-height: 1.35;
+}
+.tooltip-hours {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 11px;
+    opacity: 0.85;
+}
+.tooltip-hours lightning-icon {
+    --sds-c-icon-color-foreground-default: #fff;
+}
+
+
+/* ── Owner edit ──────────────────────────────────────────────────────────── */
+
+.owner-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+/* Hide the record-picker's own label — we already show "Assigned To" above it */
+.owner-edit lightning-record-picker .slds-form-element__label {
+    display: none;
+}
+
+.owner-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+
+/* ── Dependency tiles ────────────────────────────────────────────────────── */
+
+.deps-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+.dep-card {
+    padding: 0.625rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    background: #f3f4f6;
+}
+.dep-card-completion { background: #E8F0E9; }
+.dep-card-duedate    { background: #F5E0D8; }
+.dep-card-outgoing   { background: #f3f4f6; }
+.dep-task-name {
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 0.125rem;
+}
+.dep-meta {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+
+/* ── Responsive tweaks ───────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .task-panel {
+        width: 100%;
+    }
+    .summary-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .summary-role-row {
+        grid-template-columns: 110px 1fr 60px;
+    }
+}

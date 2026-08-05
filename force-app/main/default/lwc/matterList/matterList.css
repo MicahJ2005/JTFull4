@@ -1,0 +1,79 @@
+.matter-container {
+    padding: 20px 0;
+    width: 100%;
+}
+
+.section-header {
+    font-family: 'Georgia', 'Times New Roman', serif; /* Fuente Serif */
+    font-size: 28px; /* Más grande como en la imagen */
+    color: #222;
+    margin-bottom: 10px;
+    font-weight: 500;
+    border-left: 4px solid #005587; /* Línea azul vertical decorativa al lado del título */
+    padding-left: 15px;
+    line-height: 1.1;
+}
+
+/* El texto "Lorem ipsum" que pusiste en un componente aparte debería tener estilo similar, 
+   pero aquí estilizamos la lista */
+
+.matter-ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0 30px 10px; /* Margen para separar del título */
+}
+
+.matter-ul li {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: baseline;
+}
+
+/* Flecha triangular personalizada color Petrol */
+.matter-ul li::before {
+    content: '▶'; 
+    font-size: 10px;
+    color: #005587; /* Azul oscuro */
+    margin-right: 12px;
+    transform: scaleX(0.7); /* Hacer el triángulo un poco más estrecho */
+}
+
+.matter-link {
+    font-size: 16px;
+    color: #005587; 
+    text-decoration: underline;
+    text-underline-offset: 3px; /* Separar la línea del texto */
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.matter-link:hover {
+    color: #003355;
+    text-decoration-thickness: 2px;
+}
+
+.view-all-btn {
+    background-color: #005587; /* El mismo azul corporativo */
+    color: white;
+    width: 100%;
+    max-width: 300px; /* Limitar el ancho para que no sea gigante */
+    border: none;
+    padding: 10px 0;
+    border-radius: 50px; /* Pill shape */
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.3s;
+    display: block;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0,85,135,0.2);
+}
+
+.view-all-btn:hover {
+    background-color: #003e61;
+}
+
+.no-data {
+    color: #666;
+    padding: 10px;
+}

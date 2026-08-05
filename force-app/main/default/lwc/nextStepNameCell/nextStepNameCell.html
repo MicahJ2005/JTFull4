@@ -1,0 +1,10 @@
+<template>
+    <div class="slds-truncate" style={indentStyle} title={value}>
+        <template lwc:if={isCase}>
+            <strong>{value}</strong>
+        </template>
+        <template lwc:else>
+            <span>{value}</span>
+        </template>
+    </div>
+</template>

@@ -1,0 +1,31 @@
+<template>
+    <div class="card-container" onclick={handleNavigate}>
+        <div class="card-content">
+            <div class="icon-wrapper">
+                <template if:true={imageUrl}>
+                    <img src={imageUrl} class="custom-icon-img" alt="icon"/>
+                </template>
+
+                <template if:false={imageUrl}>
+                    <lightning-icon icon-name={iconName} size="medium" alternative-text={title}></lightning-icon>
+                </template>
+            </div>
+
+            <div class="text-wrapper">
+                <h3 class="title">{title}</h3>
+
+                <template if:true={isButtonVariant}>
+                    <button class="action-btn">{buttonLabel}</button>
+                </template>
+
+                <template if:false={isButtonVariant}>
+                    <p class="subtitle" lwc:ref="subtitleEl">{subtitle}</p>
+                </template>
+            </div>
+
+            <div class="arrow-wrapper">
+                <lightning-icon icon-name="utility:chevronright" size="x-small" class="arrow-icon"></lightning-icon>
+            </div>
+        </div>
+    </div>
+</template>
