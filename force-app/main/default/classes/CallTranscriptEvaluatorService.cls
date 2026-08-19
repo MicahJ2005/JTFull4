@@ -12,13 +12,13 @@ public with sharing class CallTranscriptEvaluatorService {
             throw new IllegalArgumentException('Transcript record Id cannot be null or blank.');
         }
 
-        // Prepare Prompt Template input
-        Map<String, String> experienceSession = new Map<String, String>{ 'id' => transcriptId };
+        // Prepare Prompt Template input as a scalar value so it matches ConnectApi serialization rules.
         ConnectApi.WrappedValue experienceSessionValue = new ConnectApi.WrappedValue();
-        experienceSessionValue.value = experienceSession;
+        experienceSessionValue.value = transcriptId;
 
         Map<String, ConnectApi.WrappedValue> inputParams = new Map<String, ConnectApi.WrappedValue>{
-            'Input:Call_Transcript' => experienceSessionValue
+            'Input:Call_Transcript' => experienceSessionValue,
+            'Call_Transcript' => experienceSessionValue
         };
 
         ConnectApi.EinsteinPromptTemplateGenerationsInput executeTemplateInput = new ConnectApi.EinsteinPromptTemplateGenerationsInput();

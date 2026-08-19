@@ -1,0 +1,55 @@
+<template>
+    <lightning-card title="Relate Person Account or Lead to Event" icon-name="standard:event">
+        <div class="slds-p-around_medium">
+            <template if:true={isSaveSuccessful}>
+                <div class="slds-notify slds-notify_alert slds-alert_success" role="alert">
+                    <span class="slds-assistive-text">Success</span>
+                    <lightning-icon icon-name="utility:success" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                    <span>Save successful. Please refresh the page to see the updated related record on the Event.</span>
+                </div>
+            </template>
+
+            <!-- If WhatId is missing, show match selector -->
+            <template if:true={accountOptions.length}>
+                <p class="slds-m-bottom_small">Select a potential match retrieved by Agentforce:</p>
+                
+                <lightning-radio-group
+                    name="accountMatches"
+                    label="Potential Matches"
+                    options={accountOptions}
+                    value={selectedAccountId}
+                    onchange={handleSelect}
+                    type="radio">
+                </lightning-radio-group>
+
+                <!-- Display Rich Text details for selected match -->
+                <template if:true={selectedAccountId}>
+                    <div class="slds-box slds-m-top_small slds-theme_shade">
+                        <lightning-formatted-rich-text value={selectedMatchRichText}>
+                        </lightning-formatted-rich-text>
+                    </div>
+                </template>
+
+                <lightning-button 
+                    class="slds-m-top_medium"
+                    variant="brand" 
+                    label="Link to Event" 
+                    onclick={handleSave}
+                    disabled={isLoading}>
+                </lightning-button>
+            </template>
+
+            <!-- State when already linked or no matches found -->
+            <template if:false={accountOptions.length}>
+                <div class="slds-text-color_weak">
+                    <template if:true={isSaveSuccessful}>
+                        <span>Save successful. Please refresh the page to see the updated related record on the Event.</span>
+                    </template>
+                    <template if:false={isSaveSuccessful}>
+                        <span>This event is already linked to a Related Record, or no potential account matches were found.</span>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

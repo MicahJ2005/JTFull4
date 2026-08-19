@@ -892,7 +892,7 @@ global class MatterCommunicationAnalysisBatch
 
     private static String invokePromptTemplate(String matterId, String communicationBlocks) {
         ConnectApi.WrappedValue matterIdVal = new ConnectApi.WrappedValue();
-        matterIdVal.value = new Map<String, Object>{ 'id' => matterId };
+        matterIdVal.value = matterId;
 
         ConnectApi.WrappedValue blocksVal = new ConnectApi.WrappedValue();
         blocksVal.value = communicationBlocks;
