@@ -67,6 +67,26 @@ private class EventAccountMatchControllerTest {
     }
 
     @isTest
+    static void testGetPotentialMatches_EventDeletedBeforeProcessing() {
+        Event evt = new Event(
+            Subject = 'Deleted before processing',
+            StartDateTime = System.now(),
+            EndDateTime = System.now().addHours(1)
+        );
+        insert evt;
+        Id deletedEventId = evt.Id;
+        delete evt;
+
+        Test.startTest();
+        List<EventAccountMatchController.AccountMatchWrapper> matches =
+            EventAccountMatchController.getPotentialMatches(deletedEventId);
+        Test.stopTest();
+
+        Assert.areEqual(0, matches.size(),
+            'Should return an empty list rather than throwing when the Event no longer exists.');
+    }
+
+    @isTest
     static void testGetPotentialMatches_NullEventId() {
         Boolean exceptionThrown = false;
 
@@ -196,5 +216,76 @@ private class EventAccountMatchControllerTest {
         Test.stopTest();
 
         Assert.areEqual(0, matches.size(), 'Should return an empty list when no Accounts or Leads match.');
+    }
+
+    @isTest
+    static void testFindPotentialMatches_TopMatchCandidateFlagged() {
+        User teamUser = [
+            SELECT Id
+            FROM User
+            WHERE IsActive = True
+                AND Profile.Name = 'System Administrator'
+            LIMIT 1
+        ];
+
+        Account pa = [SELECT Id FROM Account WHERE PersonEmail = 'testuser@example.com' LIMIT 1];
+
+        AcctSeed__Project__c activeMatter = new AcctSeed__Project__c(
+            AcctSeed__Account__c = pa.Id,
+            Name = 'Active Matter',
+            AcctSeed__Status__c = 'Active',
+            CSS__c = teamUser.Id
+        );
+        insert activeMatter;
+
+        EventAccountMatchController.PromptResponseWrapper nameDetails =
+            new EventAccountMatchController.PromptResponseWrapper();
+        nameDetails.firstName = 'Jane';
+        nameDetails.lastName = 'TestUser';
+
+        Test.startTest();
+        List<EventAccountMatchController.AccountMatchWrapper> matches =
+            EventAccountMatchController.findPotentialMatches(nameDetails, teamUser.Id);
+        Test.stopTest();
+
+        EventAccountMatchController.AccountMatchWrapper topMatch = matches[0];
+        Assert.areEqual(pa.Id, topMatch.id, 'Person Account with the matching Active Matter should be sorted first.');
+        Assert.isTrue(topMatch.isTopMatchCandidate, 'Should be flagged as a Top Match Candidate.');
+        Assert.areEqual(1, topMatch.activeMatterMatches.size(), 'Should list the one matching Active Matter.');
+        Assert.areEqual('CSS', topMatch.activeMatterMatches[0].role, 'Role should reflect the CSS__c field the Event Owner matched on.');
+    }
+
+    @isTest
+    static void testFindPotentialMatches_NoTopMatchWhenOwnerNotOnMatter() {
+        User teamUser = [
+            SELECT Id
+            FROM User
+            WHERE IsActive = True
+                AND Profile.Name = 'System Administrator'
+            LIMIT 1
+        ];
+
+        Account pa = [SELECT Id FROM Account WHERE PersonEmail = 'testuser@example.com' LIMIT 1];
+
+        AcctSeed__Project__c activeMatter = new AcctSeed__Project__c(
+            AcctSeed__Account__c = pa.Id,
+            Name = 'Active Matter Without Owner Match',
+            AcctSeed__Status__c = 'Active'
+        );
+        insert activeMatter;
+
+        EventAccountMatchController.PromptResponseWrapper nameDetails =
+            new EventAccountMatchController.PromptResponseWrapper();
+        nameDetails.firstName = 'Jane';
+        nameDetails.lastName = 'TestUser';
+
+        Test.startTest();
+        List<EventAccountMatchController.AccountMatchWrapper> matches =
+            EventAccountMatchController.findPotentialMatches(nameDetails, teamUser.Id);
+        Test.stopTest();
+
+        for (EventAccountMatchController.AccountMatchWrapper match : matches) {
+            Assert.isFalse(match.isTopMatchCandidate, 'Should not be flagged when the Event Owner holds no role on any Active Matter.');
+        }
     }
 }

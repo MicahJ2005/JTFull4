@@ -46,13 +46,21 @@ public with sharing class ZoomPhoneTranscriptBuildQueueable implements Queueable
 
         Map<String, Object> recording = recordings[currentIndex];
         String callId = recording != null ? (String) recording.get('call_id') : null;
+        String recordingId = recording != null ? (String) recording.get('id') : null;
+        ZoomPhoneIntegration.CallResponse matchedResponse = callId != null ? responseMap.get(callId) : null;
 
         try {
             transcripts.addAll(ZoomPhoneIntegration.buildTranscriptForRecording(
                 recording, token, responseMap, phoneToAccountIdMap, phoneToLeadIdMap, phoneToUserIdMap
             ));
         } catch (Exception e) {
-            ZoomIntegrationErrorLogger.log('ZoomPhoneTranscriptBuildQueueable', 'execute', null, callId, e);
+            // Passing recordingId/voiceCallId lets the logger schedule an automatic retry when
+            // this is Zoom error 12002 ("still being transcribed") instead of losing the
+            // transcript once the sync window's fromDateTime/toDateTime moves past it.
+            ZoomIntegrationErrorLogger.log(
+                'ZoomPhoneTranscriptBuildQueueable', 'execute', null, callId, e,
+                recordingId, matchedResponse != null ? matchedResponse.voiceCallId : null
+            );
         }
 
         Integer nextIndex = currentIndex + 1;

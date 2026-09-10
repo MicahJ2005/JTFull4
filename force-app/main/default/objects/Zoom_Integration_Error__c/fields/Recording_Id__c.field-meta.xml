@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Recording_Id__c</fullName>
+    <label>Recording Id</label>
+    <type>Text</type>
+    <length>255</length>
+    <description>Zoom Phone recording id used to re-fetch the transcript on retry. Only populated for retryable errors (e.g. Zoom error 12002, &quot;still being transcribed&quot;).</description>
+</CustomField>

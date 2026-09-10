@@ -129,6 +129,29 @@ private class ZoomPhoneIntegrationTest {
         }
     }
 
+    // Same shape as FetchTranscriptMock's redirect, but the final hop returns Zoom error 12002
+    // ("still being transcribed") instead of a transcript, so the audio upload path is left
+    // untouched (returns 204) and only the transcript fetch fails.
+    private class TranscriptStillProcessingMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            String endpoint = req.getEndpoint();
+            HttpResponse res = new HttpResponse();
+            if (endpoint.contains('recording_transcript/download/')) {
+                res.setStatusCode(302);
+                res.setHeader('location', 'https://zoom-redirected-transcript.com/mock-transcript.txt');
+            } else if (endpoint.contains('zoom-redirected-transcript.com')) {
+                res.setStatusCode(400);
+                res.setBody('{"code":12002,"message":"This recording is still in the process of being transcribed. Reopen this recording in a few minutes."}');
+            } else if (endpoint.contains('upload')) {
+                res.setStatusCode(204);
+            } else {
+                res.setStatusCode(404);
+                res.setBody('Endpoint not recognized in mock.');
+            }
+            return res;
+        }
+    }
+
     private class MultiCalloutMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest req) {
             String endpoint = req.getEndpoint();
@@ -169,6 +192,17 @@ private class ZoomPhoneIntegrationTest {
     // chain can't be exercised end-to-end in one test; instead each hop is tested by calling
     // execute() directly as a plain method (which doesn't touch that budget) and only letting
     // stopTest() drain the one real chain transition that remains within a given test.
+
+    @isTest
+    static void testSchedulableExecuteRunsSyncAndRetryPass() {
+        // Exercises the Schedulable entry point itself (execute -> sendZoomDataToSalesforce +
+        // retryPendingTranscripts), which the other tests below bypass by calling the static
+        // sync/retry methods directly.
+        Test.setMock(HttpCalloutMock.class, new MultiCalloutMockNoRecordings());
+        Test.startTest();
+        new ZoomPhoneIntegration().execute(null);
+        Test.stopTest();
+    }
 
     @isTest
     static void testZoomPhoneIntegrationQueueableExecute() {
@@ -323,6 +357,287 @@ private class ZoomPhoneIntegrationTest {
         System.assertEquals(1, errors.size(), 'Expected the transcript fetch failure to be logged');
         System.assertEquals('12345', errors[0].Zoom_Meeting_Id__c);
         System.assertEquals('execute', errors[0].Apex_Method__c);
+    }
+
+    private class MultiCalloutMockUploadFails implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            String endpoint = req.getEndpoint();
+            if (endpoint.contains('oauth/token')) return new ZoomTokenMock().respond(req);
+            if (endpoint.contains('call_history')) return new ZoomCallHistoryMock().respond(req);
+            if (endpoint.contains('/voicecalls')) return new SalesforceApiMock().respond(req);
+            if (endpoint.contains('/recordings')) return new FetchRecordingsMock().respond(req);
+            if (endpoint.contains('upload')) return new UploadRecordingsFailMock().respond(req);
+            if (endpoint.contains('recording_transcript/download') || endpoint.contains('zoom-redirected-transcript.com')) return new FetchTranscriptMock().respond(req);
+            HttpResponse fallback = new HttpResponse(); fallback.setStatusCode(404); fallback.setBody('Unknown endpoint');
+            return fallback;
+        }
+    }
+
+    @isTest
+    static void testBuildTranscriptForRecordingSucceedsWhenUploadFails() {
+        // A failed audio upload used to abort buildTranscriptForRecording entirely, losing a
+        // transcript that would otherwise have fetched fine. Upload and transcript are
+        // independent Zoom operations, so this asserts they're now handled independently too.
+        Test.setMock(HttpCalloutMock.class, new MultiCalloutMockUploadFails());
+
+        Map<String, Object> recording = new Map<String, Object>{
+            'id' => 'rec1',
+            'call_id' => '12345',
+            'download_url' => 'https://zoom.us/recordings/abc123'
+        };
+        ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
+        resp.externalId = '12345';
+        resp.uploadUrl = 'https://example.com/upload';
+        resp.isSuccess = true;
+        Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
+
+        Test.startTest();
+        List<Call_Transcript__c> result = ZoomPhoneIntegration.buildTranscriptForRecording(
+            recording, 'mockToken', responseMap, new Map<String, Account>(), new Map<String, Lead>(), new Map<String, User>()
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, result.size(), 'Transcript should still be built even though the audio upload failed');
+        System.assert(result[0].Transcript_Text__c.contains('Hello there!'));
+
+        List<Zoom_Integration_Error__c> errors = [SELECT Apex_Method__c FROM Zoom_Integration_Error__c];
+        System.assertEquals(1, errors.size(), 'Only the upload failure should be logged');
+        System.assertEquals('uploadRecording', errors[0].Apex_Method__c);
+    }
+
+    @isTest
+    static void testZoomPhoneTranscriptBuildQueueableLogsRetryableError() {
+        // A 12002 failure surfacing through the build queueable's catch block should carry the
+        // recording id and VoiceCall id needed for ZoomPhoneIntegration.retryPendingTranscripts
+        // to pick it back up later, instead of being logged as a plain, unretryable failure.
+        Test.setMock(HttpCalloutMock.class, new TranscriptStillProcessingMock());
+
+        Map<String, Object> recording = new Map<String, Object>{
+            'id' => 'rec1',
+            'call_id' => '12345',
+            'download_url' => 'https://zoom.us/recordings/abc123'
+        };
+        ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
+        resp.externalId = '12345';
+        resp.uploadUrl = 'https://example.com/upload';
+        resp.voiceCallId = '0Aa000000000001';
+        resp.isSuccess = true;
+        Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
+
+        ZoomPhoneTranscriptBuildQueueable buildJob = new ZoomPhoneTranscriptBuildQueueable(
+            'mockToken', new List<Map<String, Object>>{ recording }, 0,
+            responseMap, new Map<String, Account>(), new Map<String, Lead>(), new Map<String, User>(),
+            new List<Call_Transcript__c>(), false
+        );
+
+        buildJob.execute(null);
+
+        Zoom_Integration_Error__c error = [
+            SELECT Error_Type__c, Recording_Id__c, Voice_Call_Id__c, Resolved__c
+            FROM Zoom_Integration_Error__c LIMIT 1
+        ];
+        System.assertEquals('Transcript Not Ready', error.Error_Type__c);
+        System.assertEquals('rec1', error.Recording_Id__c);
+        System.assertEquals('0Aa000000000001', error.Voice_Call_Id__c);
+        System.assertEquals(false, error.Resolved__c);
+    }
+
+    @isTest
+    static void testProcessTranscriptRetrySucceeds() {
+        Test.setMock(HttpCalloutMock.class, new FetchTranscriptMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Transcript Not Ready',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = '0Aa000000000001',
+            Retry_Count__c = 1, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processTranscriptRetry(retryRecord, 'mockToken');
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id];
+        System.assertEquals(true, updated.Resolved__c, 'A successful retry should mark the record resolved');
+    }
+
+    @isTest
+    static void testProcessTranscriptRetryReschedulesOnStillProcessing() {
+        Test.setMock(HttpCalloutMock.class, new TranscriptStillProcessingMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Transcript Not Ready',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = '0Aa000000000001',
+            Retry_Count__c = 0, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processTranscriptRetry(retryRecord, 'mockToken');
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [
+            SELECT Resolved__c, Retry_Count__c, Next_Retry_At__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id
+        ];
+        System.assertEquals(false, updated.Resolved__c, 'Still processing should keep the retry pending');
+        System.assertEquals(1, updated.Retry_Count__c);
+        System.assert(updated.Next_Retry_At__c > Datetime.now(), 'Next attempt should be rescheduled into the future');
+    }
+
+    @isTest
+    static void testProcessTranscriptRetryGivesUpAfterMaxAttempts() {
+        Test.setMock(HttpCalloutMock.class, new TranscriptStillProcessingMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Transcript Not Ready',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = '0Aa000000000001',
+            Retry_Count__c = 4, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processTranscriptRetry(retryRecord, 'mockToken');
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c, Retry_Count__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id];
+        System.assertEquals(true, updated.Resolved__c, 'Should give up once MAX_TRANSCRIPT_RETRY_ATTEMPTS is reached');
+        System.assertEquals(5, updated.Retry_Count__c);
+    }
+
+    @isTest
+    static void testSendCallMetadataToECISkipsCallsWithNoExistingVoiceCall() {
+        // No VoiceCall exists in test data (it can't be created via DML in a test - see the note
+        // on testBuildTranscriptForRecordingReturnsTranscriptText), so this exercises the "nothing
+        // to skip" branch of the new dedupe filter - a regression guard that it doesn't
+        // accidentally drop calls that are genuinely new.
+        Test.setMock(HttpCalloutMock.class, new SalesforceApiMock());
+
+        Map<String, Object> call = new Map<String, Object>{
+            'externalId' => '12345',
+            'recordingDuration' => 300,
+            'startDateTime' => '2024-02-12T12:00:00Z',
+            'endDateTime' => '2024-02-12T12:05:00Z',
+            'callType' => 'Inbound',
+            'userId' => UserInfo.getUserId(),
+            'toPhoneNumber' => '1234567890',
+            'fromPhoneNumber' => '0987654321',
+            'recordingFormat' => 'mp3',
+            'mediaProviderId' => '123'
+        };
+        String jsonInput = JSON.serialize(new Map<String, Object>{ 'calls' => new List<Object>{ call } });
+
+        Test.startTest();
+        List<ZoomPhoneIntegration.CallResponse> responses = ZoomPhoneIntegration.sendCallMetadataToECI(jsonInput);
+        Test.stopTest();
+
+        System.assertEquals(1, responses.size(), 'The call has no existing VoiceCall, so it should still be sent to the create endpoint');
+    }
+
+    @isTest
+    static void testProcessWebhookTranscriptReadyLogsRetryWhenVoiceCallMissing() {
+        // No VoiceCall can be created via DML in a test, and this call id was never created by
+        // the metadata poll either - so resolveVoiceCallId's lookup finds nothing, which is
+        // exactly the routine case the webhook path has to handle given the 60-90 minute lag on
+        // that poll versus Zoom usually finishing transcription within minutes.
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookTranscriptReady('rec1', '99999', 'mockToken');
+        Test.stopTest();
+
+        Zoom_Integration_Error__c logRecord = [
+            SELECT Error_Type__c, Recording_Id__c, Zoom_Meeting_Id__c, Resolved__c, Retry_Count__c
+            FROM Zoom_Integration_Error__c LIMIT 1
+        ];
+        System.assertEquals('Voice Call Not Found', logRecord.Error_Type__c);
+        System.assertEquals('rec1', logRecord.Recording_Id__c);
+        System.assertEquals('99999', logRecord.Zoom_Meeting_Id__c);
+        System.assertEquals(false, logRecord.Resolved__c);
+        System.assertEquals(0, logRecord.Retry_Count__c);
+    }
+
+    @isTest
+    static void testProcessTranscriptRetryResolvesVoiceCallFromCallIdWhenBlank() {
+        // Voice_Call_Id__c is blank here (as it would be for a retry row created by the webhook
+        // path, which never had a VoiceCall to record in the first place) - processTranscriptRetry
+        // should fall back to resolving it from Zoom_Meeting_Id__c (the call id) instead of
+        // erroring on a missing id.
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Voice Call Not Found',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = null, Zoom_Meeting_Id__c = '12345',
+            Retry_Count__c = 0, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processTranscriptRetry(retryRecord, 'mockToken');
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [
+            SELECT Resolved__c, Retry_Count__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id
+        ];
+        System.assertEquals(false, updated.Resolved__c, 'Should keep retrying while the VoiceCall still cannot be resolved');
+        System.assertEquals(1, updated.Retry_Count__c);
+    }
+
+    @isTest
+    static void testRetryPendingTranscriptsProcessesDueRetries() {
+        Test.setMock(HttpCalloutMock.class, new MultiCalloutMock());
+
+        Zoom_Integration_Error__c dueRetry = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Transcript Not Ready',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = '0Aa000000000001',
+            Retry_Count__c = 0, Next_Retry_At__c = Datetime.now().addMinutes(-5), Resolved__c = false
+        );
+        insert dueRetry;
+
+        Test.startTest();
+        ZoomPhoneIntegration.retryPendingTranscripts();
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c FROM Zoom_Integration_Error__c WHERE Id = :dueRetry.Id];
+        System.assertEquals(true, updated.Resolved__c, 'The due retry should have been processed and resolved via the enqueued job');
+    }
+
+    @isTest
+    static void testRetryPendingTranscriptsNoOpWhenNoneDue() {
+        Test.startTest();
+        ZoomPhoneIntegration.retryPendingTranscripts();
+        Test.stopTest();
+        // Nothing due, so no callout/job should be attempted - just asserting no exception here.
+    }
+
+    @isTest
+    static void testZoomPhoneTranscriptRetryQueueableExecute() {
+        Test.setMock(HttpCalloutMock.class, new FetchTranscriptMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'Test', Apex_Method__c = 'execute', Error_Type__c = 'Transcript Not Ready',
+            Recording_Id__c = 'rec1', Voice_Call_Id__c = '0Aa000000000001',
+            Retry_Count__c = 0, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        ZoomPhoneTranscriptRetryQueueable retryJob = new ZoomPhoneTranscriptRetryQueueable(
+            'mockToken', new List<Zoom_Integration_Error__c>{ retryRecord }, 0
+        );
+        retryJob.execute(null);
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id];
+        System.assertEquals(true, updated.Resolved__c);
+    }
+
+    @isTest
+    static void testUpsertCallTranscriptsWithAgentPromptActiveAndNoSuccessfulSaves() {
+        // Call_Transcript__c.Voice_Call__c is a required lookup to the standard VoiceCall object,
+        // which isn't createable via DML in a test - so this upsert always fails, exercising the
+        // agentPromptActive branch's "nothing to evaluate" path rather than the success path.
+        Call_Transcript__c t = new Call_Transcript__c(
+            Voice_Call__c = '0Aa000000000001', Transcript_Text__c = 'test', Transcript_Sequence__c = 1
+        );
+
+        Test.startTest();
+        ZoomPhoneIntegration.upsertCallTranscripts(new List<Call_Transcript__c>{ t }, true);
+        Test.stopTest();
+        // No exception thrown is the assertion here - the record itself can't be verified saved.
     }
 
     @isTest

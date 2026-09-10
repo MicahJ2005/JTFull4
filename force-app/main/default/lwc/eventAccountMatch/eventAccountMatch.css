@@ -1,0 +1,18 @@
+.match-card {
+    cursor: pointer;
+    transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+
+.match-card:hover {
+    border-color: #1589ee;
+}
+
+.match-card_selected {
+    border-color: #1589ee;
+    box-shadow: 0 0 0 1px #1589ee inset;
+}
+
+.top-match-badge {
+    display: inline-flex;
+    align-items: center;
+}

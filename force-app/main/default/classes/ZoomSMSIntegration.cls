@@ -7,10 +7,16 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
 
     @future(callout=true)
     public static void sendZoomDataToSalesforce() {
-        String clientId = 'OlTvfeKSCuXyENCswlexQ';
-        String clientSecret = 'mJQ2SXpsBABlord50hHQVj7l40tLg3n9';
-        String accountId = 'Af5TohNeQKiIODcnyFCOyQ';
-        String accessToken = ZoomPhoneIntegration.getZoomToken(clientId, clientSecret, accountId);
+        // SMS uses its own Zoom Marketplace app (SMS_Client_Id__c/SMS_Client_Secret__c) - same
+        // Zoom account as AccountId__c below, but a separate app/credential pair from
+        // ClientId__c/ClientSecret__c, which the phone/meeting integrations use instead.
+        ZoomConfig__mdt cfg = [
+            SELECT AccountId__c, SMS_Client_Id__c, SMS_Client_Secret__c
+            FROM   ZoomConfig__mdt
+            WHERE  DeveloperName = 'Default'
+            LIMIT  1
+        ];
+        String accessToken = ZoomPhoneIntegration.getZoomToken(cfg.SMS_Client_Id__c, cfg.SMS_Client_Secret__c, cfg.AccountId__c);
         Datetime now = Datetime.now(); // Current datetime
         String toDateTime = now.addHours(0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); //current time
         String fromDateTime = now.addHours(-24).addMinutes(-0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // Grab the last 24hrs
@@ -141,19 +147,28 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
             phoneToUserNameMap.put(u.name, u);
         }
 
-        ////Create New Sessions///
-        List<SMS_Session__c> listSessionsToInsert = new List<SMS_Session__c>();
-        for(string sessionId: sessionIdToMessageMap.keySet()){
-            SMS_Session__c newSMSession = new SMS_Session__c();
-            newSMSession.Zoom_Session_Id__c = sessionId;
-            listSessionsToInsert.add(newSMSession);
-        }
-        insert listSessionsToInsert;
-
-        ///create map of new Sessions
+        ////Reuse any SMS_Session__c that already exists for a given Zoom_Session_Id__c instead of
+        ////always inserting a new one - the fetch window above is a rolling last-24-hours on every
+        ////run, so without this the same session would get a brand new duplicate record on every
+        ////scheduled run for as long as it stays in that window.///
         Map<String, SMS_Session__c> sessionZoomIdToSMSessionMap = new Map<String, SMS_Session__c>();
-        for(SMS_Session__c session: listSessionsToInsert){
-            sessionZoomIdToSMSessionMap.put(session.Zoom_Session_Id__c, session);
+        for (SMS_Session__c existingSession : [
+            SELECT Id, Zoom_Session_Id__c FROM SMS_Session__c WHERE Zoom_Session_Id__c IN :sessionIdToMessageMap.keySet()
+        ]) {
+            sessionZoomIdToSMSessionMap.put(existingSession.Zoom_Session_Id__c, existingSession);
+        }
+
+        List<SMS_Session__c> listSessionsToInsert = new List<SMS_Session__c>();
+        for (String sessionId : sessionIdToMessageMap.keySet()) {
+            if (!sessionZoomIdToSMSessionMap.containsKey(sessionId)) {
+                SMS_Session__c newSMSession = new SMS_Session__c();
+                newSMSession.Zoom_Session_Id__c = sessionId;
+                listSessionsToInsert.add(newSMSession);
+                sessionZoomIdToSMSessionMap.put(sessionId, newSMSession);
+            }
+        }
+        if (!listSessionsToInsert.isEmpty()) {
+            insert listSessionsToInsert;
         }
 
 
@@ -328,10 +343,40 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
             reset.add(ind);
         }
         system.debug('reset'+ reset);
-        List<SMS_Session_Individual__c> newSMSessionIndividualsToInsert = new List<SMS_Session_Individual__c>(reset);
-        insert newSMSessionIndividualsToInsert;
+
+        // Skip any (session, related record, role) pairing that already has an
+        // SMS_Session_Individual__c from a prior run - the fetch window above is a rolling
+        // last-24-hours on every run, so without this the same pairing would get a duplicate
+        // record on every scheduled run for as long as the session stays in that window.
+        Set<String> existingIndividualKeys = new Set<String>();
+        for (SMS_Session_Individual__c existingIndividual : [
+            SELECT Zoom_Session_Id__c, type__c, Account__c, Lead__c, JT_User__c
+            FROM SMS_Session_Individual__c
+            WHERE Zoom_Session_Id__c IN :sessionIdToMessageMap.keySet()
+        ]) {
+            existingIndividualKeys.add(buildIndividualDedupeKey(
+                existingIndividual.Zoom_Session_Id__c, existingIndividual.type__c,
+                existingIndividual.Account__c, existingIndividual.Lead__c, existingIndividual.JT_User__c
+            ));
+        }
+
+        List<SMS_Session_Individual__c> newSMSessionIndividualsToInsert = new List<SMS_Session_Individual__c>();
+        for (SMS_Session_Individual__c ind : reset) {
+            String key = buildIndividualDedupeKey(ind.Zoom_Session_Id__c, ind.type__c, ind.Account__c, ind.Lead__c, ind.JT_User__c);
+            if (!existingIndividualKeys.contains(key)) {
+                newSMSessionIndividualsToInsert.add(ind);
+            }
+        }
+        if (!newSMSessionIndividualsToInsert.isEmpty()) {
+            insert newSMSessionIndividualsToInsert;
+        }
 
         update ListSessionsToUpdate;
+    }
+
+    private static String buildIndividualDedupeKey(String sessionId, String type, Id accountId, Id leadId, Id userId) {
+        Id relatedId = accountId != null ? accountId : (leadId != null ? leadId : userId);
+        return sessionId + '|' + type + '|' + relatedId;
     }
 
 

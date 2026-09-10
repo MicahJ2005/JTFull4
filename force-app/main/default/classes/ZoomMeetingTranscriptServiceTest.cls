@@ -76,6 +76,44 @@ private class ZoomMeetingTranscriptServiceTest {
         // System.assert(transcripts[0].Transcript__c.contains('Hello everyone'));
     }
 
+    @isTest
+    static void testGetRecentMeetingsSkipsAlreadyImportedTranscript() {
+        // The dedupe check used to compare against meeting.uuid, but Zoom_Meeting_Id__c is always
+        // populated from the recording file's own meeting_id (see ZoomTranscriptFetchQueueable),
+        // so it could never actually match and the same transcript would be re-fetched on every
+        // overlapping run. This proves a transcript already imported for a given meeting_id is
+        // now correctly skipped.
+        User u = new User(
+            Username = 'testuser912@example.com',
+            Email = 'testuser912@example.com',
+            LastName = 'Test912',
+            Alias = 'tuser912',
+            TimeZoneSidKey = 'America/Los_Angeles',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            ProfileId = UserInfo.getProfileId(),
+            LanguageLocaleKey = 'en_US',
+            Zoom_User_Id__c = 'zoom1235912'
+        );
+        insert u;
+
+        insert new Meeting_Transcript__c(
+            Johnson_Turner_User__c = u.Id,
+            Zoom_Meeting_Id__c = '1234' // matches MockZoomHttpResponseGenerator's RecordingFile.meeting_id
+        );
+
+        Test.setMock(HttpCalloutMock.class, new MockZoomHttpResponseGenerator());
+
+        Map<String, User> zoomUserIdsToUserMap = new Map<String, User>{ 'zoom1235912' => u };
+
+        Test.startTest();
+        Map<String, List<ZoomMeetingTranscriptService.RecordingFile>> result =
+            ZoomMeetingTranscriptService.getRecentMeetings('mockToken', zoomUserIdsToUserMap);
+        Test.stopTest();
+
+        System.assertEquals(0, result.size(), 'A transcript already imported for this meeting_id should be skipped, not re-fetched');
+    }
+
      // Mock callout class
      class MockZoomParticipantsResponse implements HttpCalloutMock {
         public HTTPResponse respond(HTTPRequest req) {

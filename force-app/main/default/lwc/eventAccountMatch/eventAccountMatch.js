@@ -42,11 +42,23 @@ export default class EventAccountMatch extends LightningElement {
             console.log('Fetched potential matches:', matches);
             this.accountOptions = matches.map(match => {
                 const recordTypeLabel = match.recordType === 'Lead' ? 'Lead' : 'Person Account';
+                const activeMatterMatches = (match.activeMatterMatches || []).map(matter => ({
+                    ...matter,
+                    hasRole: !!matter.role
+                }));
                 return {
                     label: `${match.name} (${match.email || 'No Email'}) - ${recordTypeLabel}`,
                     value: match.id,
+                    name: match.name,
+                    email: match.email || 'No Email',
                     recordType: match.recordType || 'PersonAccount',
-                    richDescription: match.richTextNotes || ''
+                    recordTypeLabel,
+                    richDescription: match.richTextNotes || '',
+                    isTopMatchCandidate: !!match.isTopMatchCandidate,
+                    activeMatterMatches,
+                    hasActiveMatterMatches: activeMatterMatches.length > 0,
+                    isSelected: false,
+                    cardClass: 'slds-box slds-box_x-small slds-m-bottom_small match-card'
                 };
             });
         } catch (error) {
@@ -64,10 +76,26 @@ export default class EventAccountMatch extends LightningElement {
         return this.selectedMatch ? this.selectedMatch.richDescription : '';
     }
 
-    handleSelect(event) {
-        const selectedOption = this.accountOptions.find(option => option.value === event.detail.value);
+    handleCardClick(event) {
+        const selectedId = event.currentTarget.dataset.id;
+        this.applySelection(selectedId);
+    }
+
+    applySelection(selectedId) {
+        const selectedOption = this.accountOptions.find(option => option.value === selectedId);
         this.selectedAccountId = selectedOption ? selectedOption.value : '';
         this.selectedRecordType = selectedOption ? selectedOption.recordType : '';
+
+        this.accountOptions = this.accountOptions.map(option => {
+            const isSelected = option.value === this.selectedAccountId;
+            return {
+                ...option,
+                isSelected,
+                cardClass: isSelected
+                    ? 'slds-box slds-box_x-small slds-m-bottom_small match-card match-card_selected'
+                    : 'slds-box slds-box_x-small slds-m-bottom_small match-card'
+            };
+        });
     }
 
     async handleSave() {

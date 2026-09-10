@@ -24,6 +24,18 @@
                 <fullName>Other</fullName>
                 <default>false</default>
             </value>
+            <value>
+                <fullName>Transcript Not Ready</fullName>
+                <default>false</default>
+            </value>
+            <value>
+                <fullName>Zoom Cannot Transcribe</fullName>
+                <default>false</default>
+            </value>
+            <value>
+                <fullName>Voice Call Not Found</fullName>
+                <default>false</default>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

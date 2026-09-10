@@ -140,24 +140,31 @@ public with sharing class ZoomMeetingTranscriptService implements Queueable, Dat
                 RecordingWrapper wrappedData = parseJson(res.getBody());
                 if(wrappedData.meetings != null){
                     for(Meeting meeting : wrappedData.meetings) {
-                        if(!zoomMeetingIdsAlreadyImported.contains(meeting.uuid)){
-                            system.debug('This is a new Transcript ' + meeting.uuid + ' Keep it...');
-                            system.debug('This is the Zoom Event Id ' + meeting.id + ' YEAH!!');
-                            for (RecordingFile file : meeting.recording_files) {
-                                if(file.file_type == 'TRANSCRIPT'){
-                                    if(userToTranscriptFileMap.containsKey(zoomId+'#'+meeting.id)){
-                                        userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
-                                    }
-                                    else{
-                                        userToTranscriptFileMap.put(zoomId+'#'+meeting.id, new List<RecordingFile>());
-                                        userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
-                                    }
+                        if (meeting.recording_files == null) continue;
 
-                                }
+                        for (RecordingFile file : meeting.recording_files) {
+                            if (file.file_type != 'TRANSCRIPT') continue;
+
+                            // Compare against file.meeting_id, not meeting.uuid - that's the value
+                            // actually stored into Zoom_Meeting_Id__c below (via
+                            // ZoomTranscriptFetchQueueable's processTranscript call), and the two
+                            // aren't necessarily the same identifier. Comparing against the wrong
+                            // one meant this check could never actually match, letting the same
+                            // transcript get re-imported on every overlapping run.
+                            if (zoomMeetingIdsAlreadyImported.contains(file.meeting_id)) {
+                                system.debug('Transcript already exists for ' + file.meeting_id + ' skipping...');
+                                continue;
                             }
-                        }
-                        else{
-                            system.debug('Transcript Already Exists for ' + meeting.uuid + ' skipping...');
+
+                            system.debug('This is a new Transcript ' + file.meeting_id + ' Keep it...');
+                            system.debug('This is the Zoom Event Id ' + meeting.id + ' YEAH!!');
+                            if(userToTranscriptFileMap.containsKey(zoomId+'#'+meeting.id)){
+                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
+                            }
+                            else{
+                                userToTranscriptFileMap.put(zoomId+'#'+meeting.id, new List<RecordingFile>());
+                                userToTranscriptFileMap.get(zoomId+'#'+meeting.id).add(file);
+                            }
                         }
                     }
                 }

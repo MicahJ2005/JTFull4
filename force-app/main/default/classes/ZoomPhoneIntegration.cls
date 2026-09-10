@@ -2,6 +2,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
 
     public void execute(SchedulableContext ctx) {
         sendZoomDataToSalesforce();
+        retryPendingTranscripts();
     }
 
     // Kicks off ZoomPhoneIntegrationQueueable rather than doing the work in a @future method.
@@ -34,10 +35,10 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
 
         // Step 2: Fetch Call Logs
         Datetime now = Datetime.now(); // Current datetime
-        // String toDateTime = now.addHours(-1).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1 hour ago
-        // String fromDateTime = now.addHours(-1).addMinutes(-30).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1.5 hours ago
-        String toDateTime   = DateTime.newInstanceGmt(2026, 7, 22, 14, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 9:00am CDT
-        String fromDateTime = DateTime.newInstanceGmt(2026, 7, 22, 13, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 8:00am CDT
+        String toDateTime = now.addHours(-1).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1 hour ago
+        String fromDateTime = now.addHours(-1).addMinutes(-30).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 1.5 hours ago
+        // String toDateTime   = DateTime.newInstanceGmt(2026, 8, 19, 14, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 9:00am CDT
+        // String fromDateTime = DateTime.newInstanceGmt(2026, 8, 19, 13, 0, 0).formatGMT('yyyy-MM-dd\'T\'HH:mm:ss\'Z\''); // 8:00am CDT
 
         String zoomJson;
         try {
@@ -168,6 +169,9 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
     public static String transformZoomData(String zoomJson, String defaultUserId) {
         // Step 1: Build a Map of Salesforce User IDs
         Map<String, User> userNameToIdMap = buildUserMap();
+        // Extension is a more reliable match than Name against Zoom's caller_name/callee_name,
+        // which can silently fail to match on any display-name spelling difference.
+        Map<String, User> userExtensionToIdMap = buildUserExtensionMap();
 
         set<string> internalUserPhoneSet = new set<string>();
         set<string> internalUserNameSet = new set<string>();
@@ -230,32 +234,33 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                 contactNameToContactMap.put(contactName, new List<string>());
                 // System.debug('CALLEE NUMBER: '+ call.get('callee_did_number'));
             }
+        }
 
-            
-
-            for(Account a: [SELECT Id, Phone, PersonMobilePhone, Name FROM Account WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                // system.debug('ACCOUNT IN LOOP: '+ a);
-                if(a.Phone != null){
-                    contactNameToContactMap.get(a.name).add(a.phone);
-                }
-                else if(a.PersonMobilePhone != null){
-                    contactNameToContactMap.get(a.name).add(a.PersonMobilePhone);
-                }
-            }
-
-            for(Lead a: [SELECT Id, Phone, Name FROM Lead WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                // system.debug('Lead IN LOOP: '+ a);
+        // Resolve phone numbers for every collected contact name in one query per object type,
+        // instead of re-querying inside the loop above for every call log entry - with a month's
+        // worth of call logs that per-entry querying blows the 100-SOQL-query governor limit.
+        for(Account a: [SELECT Id, Phone, PersonMobilePhone, Name FROM Account WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
+            // system.debug('ACCOUNT IN LOOP: '+ a);
+            if(a.Phone != null){
                 contactNameToContactMap.get(a.name).add(a.phone);
             }
+            else if(a.PersonMobilePhone != null){
+                contactNameToContactMap.get(a.name).add(a.PersonMobilePhone);
+            }
+        }
 
-            for(Contact a: [SELECT Id, Phone, MobilePhone, Name FROM Contact WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
-                // system.debug('Contact IN LOOP: '+ a);
-                if(a.phone != null){
-                    contactNameToContactMap.get(a.name).add(a.phone);
-                }
-                else if(a.MobilePhone != null){
-                    contactNameToContactMap.get(a.name).add(a.MobilePhone);
-                }
+        for(Lead a: [SELECT Id, Phone, Name FROM Lead WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
+            // system.debug('Lead IN LOOP: '+ a);
+            contactNameToContactMap.get(a.name).add(a.phone);
+        }
+
+        for(Contact a: [SELECT Id, Phone, MobilePhone, Name FROM Contact WHERE Phone != null AND Name IN: contactNameToContactMap.keySet() ]){
+            // system.debug('Contact IN LOOP: '+ a);
+            if(a.phone != null){
+                contactNameToContactMap.get(a.name).add(a.phone);
+            }
+            else if(a.MobilePhone != null){
+                contactNameToContactMap.get(a.name).add(a.MobilePhone);
             }
         }
     /////////////
@@ -306,36 +311,30 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
     
             // Map Zoom user to Salesforce user ID
             String userName = null;
+            String userExtension = null;
             string contactName = null;
-    
+
             if (call.containsKey('caller_name') && call.get('caller_name') != null && String.valueOf(call.get('direction')).toLowerCase() == 'outbound') {
                 userName = String.valueOf(call.get('caller_name'));
+                userExtension = call.get('caller_ext_number') != null ? String.valueOf(call.get('caller_ext_number')) : null;
                 contactName = String.valueOf(call.get('caller_name'));
             } else if (call.containsKey('direction') && String.valueOf(call.get('direction')).toLowerCase() == 'inbound' &&
                        call.containsKey('callee_name') && call.get('callee_name') != null) {
                 userName = String.valueOf(call.get('callee_name'));
+                userExtension = call.get('callee_ext_number') != null ? String.valueOf(call.get('callee_ext_number')) : null;
                 contactName = String.valueOf(call.get('caller_name'));
             }
-    
-            if (userName != null) {
-                if(userNameToIdMap.containsKey(userName)){
-                    String salesforceUserId = userNameToIdMap.get(userName).Id;
-                    System.debug('userName: '+ userName + ' in map: '+ userNameToIdMap.get(userName).Id);
-                    if (salesforceUserId != null) {
-                        formattedCall.put('userId', salesforceUserId);
-                    } else {
-                        // System.debug('Skipping record due to missing Salesforce user for Zoom user: ' + userName);
-                        // continue; // Skip this record
-                        formattedCall.put('userId', defaultUserId);
-                    }
-                } else {
-                    // System.debug('Skipping record — no Salesforce user found for: ' + userName);
-                    // continue; // Skip auto_receptionist, call queues, and other unmapped callers
-                    formattedCall.put('userId', defaultUserId);
-                }
+
+            // Prefer matching the internal Zoom user by extension - it's a stable identifier,
+            // unlike caller_name/callee_name which can silently fail to match a User.Name that
+            // differs in spelling. Fall back to the name match, then the default user.
+            if (userExtension != null && userExtensionToIdMap.containsKey(userExtension)) {
+                formattedCall.put('userId', userExtensionToIdMap.get(userExtension).Id);
+                System.debug('userExtension: '+ userExtension + ' in map: '+ userExtensionToIdMap.get(userExtension).Id);
+            } else if (userName != null && userNameToIdMap.containsKey(userName)) {
+                formattedCall.put('userId', userNameToIdMap.get(userName).Id);
+                System.debug('userName: '+ userName + ' in map: '+ userNameToIdMap.get(userName).Id);
             } else {
-                // System.debug('Skipping record due to missing external ID (caller_ext_id or callee_ext_id): ' + call);
-                // continue; // Skip this record
                 formattedCall.put('userId', defaultUserId);
             }
             
@@ -459,58 +458,116 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                     System.debug('Skipping call with recordingDuration == 0: ' + call);
                 }
             }
-    
-            // Reconstruct the filtered JSON payload
-            Map<String, Object> filteredInputMap = new Map<String, Object>();
-            filteredInputMap.put('calls', filteredCalls);
-            String filteredJsonInput = JSON.serialize(filteredInputMap);
-    
-            // Construct the HTTP request
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(URL.getOrgDomainUrl().toExternalForm() + '/services/data/v62.0/voicecalls');
-            req.setMethod('POST');
-            req.setTimeout(120000); // Set timeout to 120 seconds
-            req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
-            req.setHeader('Content-Type', 'application/json');
-            req.setBody(filteredJsonInput);
 
-            try {
-                // Send the request
-                Http http = new Http();
-                HttpResponse res = http.send(req);
-                system.debug('res BODY HERE: ' + res.getBody());
-                // Handle response
-                if (res.getStatusCode() == 201) {
-                    // Parse the response and return success for individual calls
-                     // Parse response into a Map
-                    Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
-                        system.debug('responseMap HERE: ' + responseMap);
-                    // Extract the "calls" array
-                    if (responseMap.containsKey('calls')) {
-                        List<Object> callObjects = (List<Object>) responseMap.get('calls');
-                        system.debug('callObjects HERE: ' + callObjects);
-                        // Map each call object to CallResponse
-                        for (Object obj : callObjects) {
-                            CallResponse response = (CallResponse) JSON.deserialize(JSON.serialize(obj), CallResponse.class);
-                            system.debug('Response object: ' + obj);
-                            responseList.add(response);
-                        }
-                    } else {
-                        throw new CalloutException('Malformed response: Missing "calls" key');
-                    }
-                } else {
-                    // Log or throw error for unexpected status codes
-                    System.debug('Error: ' + res.getBody());
-                    throw new CalloutException('Error sending call metadata to ECI: ' + res.getStatusCode() + ' - ' + res.getBody());
+            // Skip calls that already have a VoiceCall, so re-fetching an overlapping call-history
+            // window (the normal sync's own window, a manual backfill run, or any future webhook
+            // re-check) never creates a second VoiceCall for the same call.
+            filteredCalls = excludeCallsWithExistingVoiceCall(filteredCalls);
+
+            // The VoiceCalls bulk-create endpoint rejects requests over 200 records
+            // (EXCEEDED_MAX_SIZE_REQUEST: "The number of calls cannot exceed 200."), so send
+            // the filtered calls in batches of 200 instead of one request per call.
+            Integer batchSize = 200;
+            for (Integer batchStart = 0; batchStart < filteredCalls.size(); batchStart += batchSize) {
+                Integer batchEnd = Math.min(batchStart + batchSize, filteredCalls.size());
+                List<Object> callBatch = new List<Object>();
+                for (Integer i = batchStart; i < batchEnd; i++) {
+                    callBatch.add(filteredCalls[i]);
                 }
-            } catch (Exception e) {
-                ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'sendCallMetadataToECI', null, null, e);
-                throw e;
+                responseList.addAll(sendCallBatchToECI(callBatch));
             }
 
         return responseList;
     }
-    
+
+    private static List<Object> excludeCallsWithExistingVoiceCall(List<Object> calls) {
+        Set<String> externalIds = new Set<String>();
+        for (Object callObj : calls) {
+            Map<String, Object> call = (Map<String, Object>) callObj;
+            String externalId = (String) call.get('externalId');
+            if (externalId != null) {
+                externalIds.add(externalId);
+            }
+        }
+        if (externalIds.isEmpty()) {
+            return calls;
+        }
+
+        Set<String> existingExternalIds = new Set<String>();
+        for (VoiceCall vc : [SELECT VendorCallKey FROM VoiceCall WHERE VendorCallKey IN :externalIds]) {
+            existingExternalIds.add(vc.VendorCallKey);
+        }
+        if (existingExternalIds.isEmpty()) {
+            return calls;
+        }
+
+        List<Object> newCalls = new List<Object>();
+        for (Object callObj : calls) {
+            Map<String, Object> call = (Map<String, Object>) callObj;
+            String externalId = (String) call.get('externalId');
+            if (externalId == null || !existingExternalIds.contains(externalId)) {
+                newCalls.add(callObj);
+            } else {
+                System.debug('Skipping call with externalId ' + externalId + ' - VoiceCall already exists');
+            }
+        }
+        return newCalls;
+    }
+
+    private static List<CallResponse> sendCallBatchToECI(List<Object> callBatch) {
+        List<CallResponse> responseList = new List<CallResponse>();
+
+        // Reconstruct the filtered JSON payload
+        Map<String, Object> filteredInputMap = new Map<String, Object>();
+        filteredInputMap.put('calls', callBatch);
+        String filteredJsonInput = JSON.serialize(filteredInputMap);
+
+        // Construct the HTTP request
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(URL.getOrgDomainUrl().toExternalForm() + '/services/data/v62.0/voicecalls');
+        req.setMethod('POST');
+        req.setTimeout(120000); // Set timeout to 120 seconds
+        req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
+        req.setHeader('Content-Type', 'application/json');
+        req.setBody(filteredJsonInput);
+
+        try {
+            // Send the request
+            Http http = new Http();
+            HttpResponse res = http.send(req);
+            system.debug('res BODY HERE: ' + res.getBody());
+            // Handle response
+            if (res.getStatusCode() == 201) {
+                // Parse the response and return success for individual calls
+                 // Parse response into a Map
+                Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(res.getBody());
+                    system.debug('responseMap HERE: ' + responseMap);
+                // Extract the "calls" array
+                if (responseMap.containsKey('calls')) {
+                    List<Object> callObjects = (List<Object>) responseMap.get('calls');
+                    system.debug('callObjects HERE: ' + callObjects);
+                    // Map each call object to CallResponse
+                    for (Object obj : callObjects) {
+                        CallResponse response = (CallResponse) JSON.deserialize(JSON.serialize(obj), CallResponse.class);
+                        system.debug('Response object: ' + obj);
+                        responseList.add(response);
+                    }
+                } else {
+                    throw new CalloutException('Malformed response: Missing "calls" key');
+                }
+            } else {
+                // Log or throw error for unexpected status codes
+                System.debug('Error: ' + res.getBody());
+                throw new CalloutException('Error sending call metadata to ECI: ' + res.getStatusCode() + ' - ' + res.getBody());
+            }
+        } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'sendCallMetadataToECI', null, null, e);
+            throw e;
+        }
+
+        return responseList;
+    }
+
     public static void processRecordings(String token, List<CallResponse> responses, String fromDateTime, String toDateTime) {
         Agent_Prompt_Trigger__mdt setting = [
             SELECT IsActive__c
@@ -689,11 +746,46 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         CallResponse matchedResponse = responseMap.get(callId);
         System.debug('Matched response for callId: ' + callId);
 
-        uploadRecording(matchedResponse.uploadUrl, fileUrl);
-        String transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
+        if (transcriptAlreadyExistsForVoiceCall(matchedResponse.voiceCallId)) {
+            System.debug('Transcript already exists for VoiceCall ' + matchedResponse.voiceCallId + ' - skipping duplicate');
+            return result;
+        }
+
+        // Upload and transcript are independent Zoom operations - a failure uploading the audio
+        // (e.g. FILE_SIZE_LIMIT_EXCEEDED, or Salesforce being unable to fetch it from Zoom) used to
+        // throw here and abort the whole method, losing a transcript that would otherwise have
+        // fetched fine. Isolate it so it can't block the transcript fetch below - but logging it
+        // has to wait until after that callout too (DML immediately followed by a callout in the
+        // same transaction throws "You have uncommitted work pending").
+        Exception uploadError;
+        try {
+            uploadRecording(matchedResponse.uploadUrl, fileUrl);
+        } catch (Exception e) {
+            uploadError = e;
+        }
+
+        String transcript;
+        try {
+            transcript = fetchTranscriptFromZoom((String) recording.get('id'), token);
+        } finally {
+            if (uploadError != null) {
+                ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'uploadRecording', null, callId, uploadError);
+            }
+        }
         System.debug('transcript: ' + transcript);
         Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
         List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
+        String transcriptBody = formatTranscriptBody(timelineEntries, phoneToAccountIdMap, phoneToLeadIdMap, phoneToUserIdMap);
+
+        System.debug('transcriptBody Length: ' + transcriptBody.length());
+        result.addAll(processTranscript(transcriptBody, matchedResponse.voiceCallId));
+        return result;
+    }
+
+    private static String formatTranscriptBody(
+        List<Object> timelineEntries, Map<String, Account> phoneToAccountIdMap,
+        Map<String, Lead> phoneToLeadIdMap, Map<String, User> phoneToUserIdMap
+    ) {
         String transcriptBody = '';
         for (Object data : timelineEntries) {
             Map<String, Object> transcriptEntry = (Map<String, Object>) data;
@@ -711,10 +803,191 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             }
             transcriptBody += 'User: ' + userName + '\r\n' + 'text: ' + text + '\r\n' + '\r\n';
         }
+        return transcriptBody;
+    }
 
-        System.debug('transcriptBody Length: ' + transcriptBody.length());
-        result.addAll(processTranscript(transcriptBody, matchedResponse.voiceCallId));
-        return result;
+    private static final Integer MAX_TRANSCRIPT_RETRY_ATTEMPTS = 5;
+    private static final Integer RETRY_DELAY_MINUTES = 20;
+
+    /// Picks up recordings that previously failed with Zoom error 12002 ("still being
+    /// transcribed") and are now due for another attempt, per Zoom_Integration_Error__c's
+    /// Next_Retry_At__c. Called from the Schedulable's execute() (not from within the main sync's
+    /// Queueable chain) so it always gets its own System.enqueueJob call regardless of how many
+    /// recordings the main sync is processing.
+    public static void retryPendingTranscripts() {
+        List<Zoom_Integration_Error__c> dueRetries = [
+            SELECT Id, Recording_Id__c, Voice_Call_Id__c, Retry_Count__c, Zoom_Meeting_Id__c
+            FROM Zoom_Integration_Error__c
+            WHERE Resolved__c = false AND Recording_Id__c != null AND Next_Retry_At__c <= :Datetime.now()
+            ORDER BY Next_Retry_At__c ASC
+            LIMIT 50
+        ];
+
+        if (dueRetries.isEmpty()) {
+            return;
+        }
+
+        ZoomConfig__mdt cfg = [
+            SELECT AccountId__c, ClientId__c, ClientSecret__c
+            FROM   ZoomConfig__mdt
+            WHERE  DeveloperName = 'Default'
+            LIMIT  1
+        ];
+        String token = getZoomToken(cfg.ClientId__c, cfg.ClientSecret__c, cfg.AccountId__c);
+
+        System.enqueueJob(new ZoomPhoneTranscriptRetryQueueable(token, dueRetries, 0));
+    }
+
+    /// Per-recording body of the retry pass: re-fetches the transcript for one previously
+    /// "not ready" recording, or one whose VoiceCall didn't exist yet when a webhook first
+    /// reported the transcript ready (resolved here from Zoom_Meeting_Id__c, the call id, since
+    /// Voice_Call_Id__c may still be blank in that case). On another 12002 or a still-missing
+    /// VoiceCall, reschedules Next_Retry_At__c up to MAX_TRANSCRIPT_RETRY_ATTEMPTS times; on
+    /// success or any other error, marks the retry resolved. Called once per pending retry from
+    /// ZoomPhoneTranscriptRetryQueueable, each in its own transaction.
+    public static void processTranscriptRetry(Zoom_Integration_Error__c retryRecord, String token) {
+        try {
+            String voiceCallId = String.isNotBlank(retryRecord.Voice_Call_Id__c)
+                ? retryRecord.Voice_Call_Id__c
+                : resolveVoiceCallId(retryRecord.Zoom_Meeting_Id__c);
+
+            if (transcriptAlreadyExistsForVoiceCall(voiceCallId)) {
+                retryRecord.Resolved__c = true;
+                update retryRecord;
+                return;
+            }
+
+            String transcript = fetchTranscriptFromZoom(retryRecord.Recording_Id__c, token);
+            List<Call_Transcript__c> transcripts = buildTranscriptFromTimeline(transcript, voiceCallId);
+            upsertCallTranscripts(transcripts, false);
+
+            retryRecord.Resolved__c = true;
+            update retryRecord;
+        } catch (Exception e) {
+            Integer attempts = (retryRecord.Retry_Count__c != null ? retryRecord.Retry_Count__c.intValue() : 0) + 1;
+            Boolean stillRetryable = (e.getMessage() != null && e.getMessage().contains('"code":12002'))
+                || e instanceof VoiceCallNotFoundException;
+
+            retryRecord.Retry_Count__c = attempts;
+            if (stillRetryable && attempts < MAX_TRANSCRIPT_RETRY_ATTEMPTS) {
+                retryRecord.Next_Retry_At__c = Datetime.now().addMinutes(RETRY_DELAY_MINUTES);
+            } else {
+                retryRecord.Resolved__c = true;
+            }
+            update retryRecord;
+            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'processTranscriptRetry', null, retryRecord.Recording_Id__c, e);
+        }
+    }
+
+    /// Entry point for ZoomPhoneWebhookHandler's phone.recording_transcript_completed events.
+    /// Zoom typically finishes transcribing within minutes of a call ending, but the call-metadata
+    /// poll (runZoomDataSync) that creates each call's VoiceCall only looks 60-90 minutes back - so
+    /// this webhook will routinely fire before that VoiceCall exists yet, not just on rare races.
+    /// When that happens, resolveVoiceCallId throws VoiceCallNotFoundException, which
+    /// ZoomIntegrationErrorLogger treats as retryable so retryPendingTranscripts picks it back up
+    /// once the metadata poll has caught up. Called from ZoomPhoneWebhookQueueable, not directly
+    /// from the REST handler, so the inbound webhook request itself doesn't wait on this callout.
+    public static void processWebhookTranscriptReady(String recordingId, String callId, String token) {
+        try {
+            String voiceCallId = resolveVoiceCallId(callId);
+
+            if (transcriptAlreadyExistsForVoiceCall(voiceCallId)) {
+                System.debug('Transcript already exists for VoiceCall ' + voiceCallId + ' (call ' + callId + ') - skipping duplicate');
+                return;
+            }
+
+            String transcript = fetchTranscriptFromZoom(recordingId, token);
+            List<Call_Transcript__c> transcripts = buildTranscriptFromTimeline(transcript, voiceCallId);
+            upsertCallTranscripts(transcripts, false);
+        } catch (Exception e) {
+            ZoomIntegrationErrorLogger.log(
+                'ZoomPhoneIntegration', 'processWebhookTranscriptReady', null, callId, e, recordingId, null
+            );
+        }
+    }
+
+    private static String resolveVoiceCallId(String callId) {
+        List<VoiceCall> matches = callId != null
+            ? [SELECT Id FROM VoiceCall WHERE VendorCallKey = :callId LIMIT 1]
+            : new List<VoiceCall>();
+        if (matches.isEmpty()) {
+            throw new VoiceCallNotFoundException('No VoiceCall found yet for call_id ' + callId);
+        }
+        return matches[0].Id;
+    }
+
+    /// Guards every transcript-build entry point (poll, retry, webhook) against creating a second
+    /// Call_Transcript__c for the same VoiceCall - all three can independently end up processing
+    /// the same recording (an overlapping poll window, a retry racing a later poll, or a webhook
+    /// firing for a call the poll already handled).
+    private static Boolean transcriptAlreadyExistsForVoiceCall(String voiceCallId) {
+        return voiceCallId != null
+            && ![SELECT Id FROM Call_Transcript__c WHERE Voice_Call__c = :voiceCallId LIMIT 1].isEmpty();
+    }
+
+    public class VoiceCallNotFoundException extends Exception {}
+
+    /// Builds Call_Transcript__c record(s) for one recording's transcript outside the normal
+    /// batch-sync flow, resolving phone-to-name lookups just for this recording rather than reusing
+    /// the whole batch's pre-built maps (finishScanAndStartTranscriptBuild). Used by the retry path,
+    /// where a single recording is processed on its own.
+    private static List<Call_Transcript__c> buildTranscriptFromTimeline(String transcript, String voiceCallId) {
+        Map<String, Object> parsedData = (Map<String, Object>) JSON.deserializeUntyped(transcript);
+        List<Object> timelineEntries = (List<Object>) parsedData.get('timeline');
+
+        Set<String> setPhoneFormats = new Set<String>();
+        Set<String> setPhoneExtensions = new Set<String>();
+        for (Object data : timelineEntries) {
+            Map<String, Object> entry = (Map<String, Object>) data;
+            String userId = (String) entry.get('userId');
+            if (userId == null) continue;
+            if (userId.length() > 5) {
+                setPhoneFormats.addAll(ZoomSMSIntegration.generatePhoneFormats(userId));
+            } else if (userId.length() == 4) {
+                setPhoneExtensions.add(userId);
+            }
+        }
+
+        Map<String, Account> phoneToAccountIdMap = new Map<String, Account>();
+        Map<String, Lead> phoneToLeadIdMap = new Map<String, Lead>();
+        Map<String, User> phoneToUserIdMap = new Map<String, User>();
+
+        List<Account> returnedAccount = ZoomSMSIntegration.getRelatedPersonAccountByPhoneNumber(setPhoneFormats);
+        List<Lead> returnedLead = ZoomSMSIntegration.getRelatedLeadByPhoneNumber(setPhoneFormats);
+        List<User> returnedUser = ZoomSMSIntegration.getRelatedUsersByPhoneNumber(setPhoneFormats);
+        List<User> returnedUserExtension = getRelatedUsersByExtension(setPhoneExtensions);
+
+        if (returnedAccount != null) {
+            for (Account a : returnedAccount) {
+                if (a != null) {
+                    phoneToAccountIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(a.phone), a);
+                }
+            }
+        }
+        if (returnedLead != null) {
+            for (Lead l : returnedLead) {
+                if (l != null) {
+                    phoneToLeadIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(l.phone), l);
+                }
+            }
+        }
+        if (returnedUser != null) {
+            for (User u : returnedUser) {
+                if (u != null) {
+                    phoneToUserIdMap.put(ZoomSMSIntegration.removePhoneNumberFormat(u.phone), u);
+                }
+            }
+        }
+        if (returnedUserExtension != null) {
+            for (User u : returnedUserExtension) {
+                if (u.extension != null) {
+                    phoneToUserIdMap.put(u.Extension, u);
+                }
+            }
+        }
+
+        String transcriptBody = formatTranscriptBody(timelineEntries, phoneToAccountIdMap, phoneToLeadIdMap, phoneToUserIdMap);
+        return processTranscript(transcriptBody, voiceCallId);
     }
 
     /// Called by ZoomPhoneTranscriptBuildQueueable once every recording has been processed.
@@ -972,7 +1245,23 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         }
     
         return userMap;
-    }  
+    }
+
+    private static Map<String, User> buildUserExtensionMap() {
+        Map<String, User> extensionMap = new Map<String, User>();
+
+        List<User> users = [
+            SELECT Id, Name, Phone, MobilePhone, Extension
+            FROM User
+            WHERE IsActive = true AND ContactId = null AND Extension != null
+        ];
+
+        for (User user : users) {
+            extensionMap.put(user.Extension, user);
+        }
+
+        return extensionMap;
+    }
 
     public static List<User> getRelatedUsersByExtension(Set<String> extension){
         List<User> Users = [SELECT Id, Name, Phone, Extension FROM User WHERE Extension IN: extension];

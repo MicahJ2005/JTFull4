@@ -135,6 +135,26 @@ private class ZoomSMSIntegrationTest {
     }
 
     @isTest
+    static void testSMSIntegrationDoesNotDuplicateSessionOnReprocessing() {
+        // The fetch window is a rolling last-24-hours on every run, so the same session_id can
+        // legitimately come back on a later run - this proves it updates the existing
+        // SMS_Session__c/SMS_Session_Individual__c records in place instead of creating a second
+        // copy of each.
+        Test.setMock(HttpCalloutMock.class, new MultiSMSMock());
+
+        Test.startTest();
+        ZoomSMSIntegration.sendZoomDataToSalesforce();
+        ZoomSMSIntegration.sendZoomDataToSalesforce();
+        Test.stopTest();
+
+        List<SMS_Session__c> sessions = [SELECT Id FROM SMS_Session__c WHERE Zoom_Session_Id__c = 'ABC123'];
+        System.assertEquals(1, sessions.size(), 'Reprocessing the same session should not create a duplicate SMS_Session__c');
+
+        List<SMS_Session_Individual__c> individuals = [SELECT Id FROM SMS_Session_Individual__c WHERE Zoom_Session_Id__c = 'ABC123'];
+        System.assertEquals(1, individuals.size(), 'Reprocessing the same session should not create duplicate SMS_Session_Individual__c records');
+    }
+
+    @isTest
     static void testScheduleExecution() {
         Test.setMock(HttpCalloutMock.class, new MultiSMSMock());
 

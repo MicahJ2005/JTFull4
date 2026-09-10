@@ -12,15 +12,59 @@
             <!-- If WhatId is missing, show match selector -->
             <template if:true={accountOptions.length}>
                 <p class="slds-m-bottom_small">Select a potential match retrieved by Agentforce:</p>
-                
-                <lightning-radio-group
-                    name="accountMatches"
-                    label="Potential Matches"
-                    options={accountOptions}
-                    value={selectedAccountId}
-                    onchange={handleSelect}
-                    type="radio">
-                </lightning-radio-group>
+
+                <template for:each={accountOptions} for:item="option">
+                    <div
+                        key={option.value}
+                        class={option.cardClass}
+                        data-id={option.value}
+                        onclick={handleCardClick}
+                        role="radio"
+                        aria-checked={option.isSelected}
+                        tabindex="0">
+                        <div class="slds-media slds-media_center">
+                            <div class="slds-media__figure">
+                                <lightning-input
+                                    type="radio"
+                                    name="accountMatches"
+                                    data-id={option.value}
+                                    checked={option.isSelected}
+                                    onchange={handleCardClick}
+                                    variant="label-hidden"
+                                    label={option.name}>
+                                </lightning-input>
+                            </div>
+                            <div class="slds-media__body">
+                                <div class="slds-grid slds-wrap slds-grid_vertical-align-center">
+                                    <p class="slds-text-heading_small slds-m-right_small">{option.name}</p>
+                                    <span class="slds-badge slds-m-right_x-small">{option.recordTypeLabel}</span>
+                                    <template if:true={option.isTopMatchCandidate}>
+                                        <span class="slds-badge slds-theme_success top-match-badge">
+                                            <lightning-icon icon-name="utility:check" size="xx-small" variant="inverse" class="slds-m-right_xx-small"></lightning-icon>
+                                            Top Match Candidate
+                                        </span>
+                                    </template>
+                                </div>
+                                <p class="slds-text-body_small slds-text-color_weak">{option.email}</p>
+
+                                <template if:true={option.hasActiveMatterMatches}>
+                                    <div class="slds-m-top_x-small">
+                                        <p class="slds-text-title_caps slds-text-color_weak">Active Matters</p>
+                                        <template for:each={option.activeMatterMatches} for:item="matter">
+                                            <div key={matter.matterId} class="slds-text-body_small">
+                                                <lightning-icon icon-name="utility:link" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                                                <a href={matter.matterUrl} target="_blank" title={matter.matterName}>{matter.matterName}</a>
+                                                <template if:true={matter.hasRole}>
+                                                    <span class="slds-text-color_weak"> &mdash; {matter.role}</span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
 
                 <!-- Display Rich Text details for selected match -->
                 <template if:true={selectedAccountId}>
@@ -30,10 +74,10 @@
                     </div>
                 </template>
 
-                <lightning-button 
+                <lightning-button
                     class="slds-m-top_medium"
-                    variant="brand" 
-                    label="Link to Event" 
+                    variant="brand"
+                    label="Link to Event"
                     onclick={handleSave}
                     disabled={isLoading}>
                 </lightning-button>
