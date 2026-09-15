@@ -36,6 +36,10 @@
                 <fullName>Voice Call Not Found</fullName>
                 <default>false</default>
             </value>
+            <value>
+                <fullName>Voice Call Creation Failed</fullName>
+                <default>false</default>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

@@ -250,6 +250,283 @@ private class MatterCommunicationAnalysisBatchTest {
         System.assertEquals('final content', MatterCommunicationAnalysisBatch.extractSection(noTrailing, 'LAST'), 'Trailing section returns all remaining content');
     }
 
+    // ── Helper: a syntactically valid Id for a real object in this org ────────
+    // Key prefixes are assigned per org, so they are read from the describe rather than
+    // hardcoded. Produces an Id that resolves to the right SObjectType but matches no row.
+
+    private static Id fakeId(Schema.SObjectType t, Integer seq) {
+        String suffix = String.valueOf(seq);
+        while (suffix.length() < 12) suffix = '0' + suffix;
+        return Id.valueOf(t.getDescribe().getKeyPrefix() + suffix);
+    }
+
+    private static Id fakeEmailId(Integer seq)    { return fakeId(EmailMessage.SObjectType, seq); }
+    private static Id fakeCallId(Integer seq)     { return fakeId(Call_Transcript__c.SObjectType, seq); }
+    private static Id fakeMatterId(Integer seq)   { return fakeId(AcctSeed__Project__c.SObjectType, seq); }
+
+    // ── Helper: a ref map like assembleCommunicationBlocks builds ─────────────
+
+    private static Map<String, MatterCommunicationAnalysisBatch.BlockRef> refMap() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs =
+            new Map<String, MatterCommunicationAnalysisBatch.BlockRef>();
+        refs.put('1', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeEmailId(101), DateTime.newInstanceGmt(2026, 3, 31, 13, 38, 24)));
+        refs.put('2', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeEmailId(102), DateTime.newInstanceGmt(2026, 3, 31, 17, 15, 28)));
+        refs.put('3', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeEmailId(103), DateTime.newInstanceGmt(2026, 3, 31, 17, 18, 42)));
+        refs.put('4', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeCallId(104),  DateTime.newInstanceGmt(2026, 2,  2, 20, 53,  0)));
+        return refs;
+    }
+
+    // ── Unit Tests: resolveRef ────────────────────────────────────────────────
+
+    @isTest
+    static void testResolveRef() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+
+        System.assertEquals(fakeEmailId(103), MatterCommunicationAnalysisBatch.resolveRef('3', refs),
+            'Bare ordinal resolves');
+        System.assertEquals(fakeEmailId(103), MatterCommunicationAnalysisBatch.resolveRef(' Ref: 3 ', refs),
+            'Ordinal with a Ref: prefix resolves');
+        System.assertEquals(fakeEmailId(103), MatterCommunicationAnalysisBatch.resolveRef('[3]', refs),
+            'Bracketed ordinal resolves');
+
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.resolveRef('99', refs),
+            'Out-of-range ordinal resolves to nothing');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.resolveRef('View Record', refs),
+            'Label text resolves to nothing');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.resolveRef('', refs),
+            'Blank resolves to nothing');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.resolveRef('1',
+            new Map<String, MatterCommunicationAnalysisBatch.BlockRef>()), 'Empty map resolves to nothing');
+    }
+
+    // ── Unit Tests: resolveLogRef (timestamp cross-check) ─────────────────────
+
+    @isTest
+    static void testResolveLogRef_TrustsMatchingRef() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        // Ref 3's block is 17:18:42; the entry says 17:19 — within tolerance, so ref 3 stands.
+        System.assertEquals(fakeEmailId(103),
+            MatterCommunicationAnalysisBatch.resolveLogRef('3', '2026-03-31T17:19', refs),
+            'A ref whose block matches the timestamp is trusted');
+    }
+
+    @isTest
+    static void testResolveLogRef_CorrectsWrongRef() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        // This is the live failure reproduced: the entry is dated 17:19 but the AI cited the
+        // February block (ref 4). Exactly one block sits within tolerance of 17:19 — ref 3 —
+        // so that wins.
+        System.assertEquals(fakeEmailId(103),
+            MatterCommunicationAnalysisBatch.resolveLogRef('4', '2026-03-31T17:19', refs),
+            'A ref contradicted by the timestamp is corrected to the matching block');
+    }
+
+    @isTest
+    static void testResolveLogRef_KeepsRefWhenNoBetterMatch() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        // The other live case: timestamp drifted two days, but the cited ref is right. No block
+        // is near that timestamp, so nothing overrides it.
+        System.assertEquals(fakeCallId(104),
+            MatterCommunicationAnalysisBatch.resolveLogRef('4', '2025-11-03T14:35', refs),
+            'An unmatched timestamp must not discard a valid ref');
+    }
+
+    @isTest
+    static void testResolveLogRef_AmbiguousWindowKeepsRef() {
+        // Two blocks sent in the same second — the AI is the only thing that can tell them
+        // apart, so its choice must stand.
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs =
+            new Map<String, MatterCommunicationAnalysisBatch.BlockRef>();
+        refs.put('1', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeEmailId(201), DateTime.newInstanceGmt(2025, 10, 1, 20, 35, 4)));
+        refs.put('2', new MatterCommunicationAnalysisBatch.BlockRef(
+            fakeEmailId(202), DateTime.newInstanceGmt(2025, 10, 1, 20, 35, 4)));
+
+        System.assertEquals(fakeEmailId(202),
+            MatterCommunicationAnalysisBatch.resolveLogRef('2', '2025-10-01T20:35', refs),
+            'With two candidates in the window the cited ref is kept');
+    }
+
+    @isTest
+    static void testParseLogTimestamp() {
+        System.assertEquals(DateTime.newInstanceGmt(2026, 3, 31, 17, 19, 0),
+            MatterCommunicationAnalysisBatch.parseLogTimestamp('2026-03-31T17:19'), 'Minute precision parsed');
+        System.assertEquals(DateTime.newInstanceGmt(2026, 3, 31, 17, 19, 0),
+            MatterCommunicationAnalysisBatch.parseLogTimestamp('2026-03-31T17:19:42'), 'Seconds ignored');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.parseLogTimestamp('not a date'), 'Garbage rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.parseLogTimestamp(null), 'Null rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.parseLogTimestamp(''), 'Blank rejected');
+    }
+
+    // ── Unit Tests: ref-driven linkification ──────────────────────────────────
+
+    @isTest
+    static void testLinkifyLogSection_WithRefs() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        Id expected = fakeEmailId(103);
+
+        // The AI writes the ordinal; Apex substitutes the real Id.
+        String line = '2026-03-31T17:19|Email|Out|Erica/Gage||Other|Promise|Neutral|2|Q|3';
+        String out  = MatterCommunicationAnalysisBatch.linkifyLogSection(line, refs);
+
+        System.assert(out.contains('/lightning/r/EmailMessage/' + expected + '/view'),
+            'Ordinal is replaced by the real record link');
+        System.assert(!out.endsWith('|3'), 'Raw ordinal is not left in the field');
+        System.assertEquals(11, out.split('\\|', -1).size(), 'Field count preserved');
+        System.assertEquals('Neutral', MatterCommunicationAnalysisBatch.getToneFromHeader(out),
+            'Tone field still readable');
+
+        // Wrong ordinal, right timestamp → corrected.
+        String wrong = '2026-03-31T17:19|Email|Out|Erica/Gage||Other|Promise|Neutral|2|Q|4';
+        System.assert(MatterCommunicationAnalysisBatch.linkifyLogSection(wrong, refs)
+                .contains('/lightning/r/EmailMessage/' + expected + '/view'),
+            'A contradicted ordinal is corrected before the link is written');
+
+        // Junk ordinal with no timestamp match → no link, nothing invented.
+        String junk = '2020-01-01T00:00|Email|Out|X/Y||Other||Neutral|1||99';
+        String junkOut = MatterCommunicationAnalysisBatch.linkifyLogSection(junk, refs);
+        System.assert(!junkOut.contains('href'), 'An unresolvable ordinal produces no link');
+    }
+
+    @isTest
+    static void testLinkifyFactLines_WithRefs() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        String out = MatterCommunicationAnalysisBatch.linkifyFactLines(
+            '[Custody]\nF|established|Parties agreed on schedule|1,3', refs);
+
+        System.assert(out.contains('/lightning/r/EmailMessage/' + fakeEmailId(101) + '/view'), 'First ordinal resolved');
+        System.assert(out.contains('/lightning/r/EmailMessage/' + fakeEmailId(103) + '/view'), 'Second ordinal resolved');
+        System.assert(out.contains('[Custody]'), 'Section header preserved');
+    }
+
+    @isTest
+    static void testFormatPromiseHtml_WithRefs() {
+        Map<String, MatterCommunicationAnalysisBatch.BlockRef> refs = refMap();
+        String html = MatterCommunicationAnalysisBatch.formatPromiseHtml(
+            '2026-03-31|Attorney|Send the agreement|2026-04-05|2', refs);
+
+        System.assert(html.contains('/lightning/r/EmailMessage/' + fakeEmailId(102) + '/view'),
+            'Promise ordinal resolved to the real record');
+        System.assert(html.contains('Send the agreement'), 'Promise text kept');
+
+        // An ordinal that resolves to nothing must not produce a link.
+        String bad = MatterCommunicationAnalysisBatch.formatPromiseHtml(
+            '2026-03-31|Attorney|Send the agreement|2026-04-05|99', refs);
+        System.assert(!bad.contains('href'), 'Unresolvable ordinal produces no link');
+        System.assert(bad.contains('source record not identified'), 'Unresolved source is called out');
+    }
+
+    // ── Unit Tests: commRecordUrl ─────────────────────────────────────────────
+
+    @isTest
+    static void testCommRecordUrl_AcceptsCommunicationRecords() {
+        Id emailId = fakeEmailId(1);
+        System.assertEquals('/lightning/r/EmailMessage/' + emailId + '/view',
+            MatterCommunicationAnalysisBatch.commRecordUrl(String.valueOf(emailId)),
+            'EmailMessage Id should produce a Lightning link');
+
+        Id callId = fakeCallId(1);
+        System.assertEquals('/lightning/r/Call_Transcript__c/' + callId + '/view',
+            MatterCommunicationAnalysisBatch.commRecordUrl(String.valueOf(callId)),
+            'Call_Transcript__c Id should produce a Lightning link');
+
+        // A 15-character Id is normalised to its 18-character form.
+        String fifteen = String.valueOf(callId).substring(0, 15);
+        System.assertEquals('/lightning/r/Call_Transcript__c/' + callId + '/view',
+            MatterCommunicationAnalysisBatch.commRecordUrl(fifteen),
+            '15-char Id should normalise to 18 in the link');
+
+        // Surrounding whitespace is tolerated.
+        System.assertEquals('/lightning/r/EmailMessage/' + emailId + '/view',
+            MatterCommunicationAnalysisBatch.commRecordUrl('  ' + emailId + '  '),
+            'Whitespace around the Id should be trimmed');
+    }
+
+    @isTest
+    static void testCommRecordUrl_RejectsEverythingElse() {
+        // The exact junk shapes observed in production output.
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl('Related Call Transcript'),
+            'Label text is not a record Id');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl('View Record'),
+            'Link label is not a record Id');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl('a035g00000ABCDE'),
+            'Fabricated placeholder Id should be rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl(String.valueOf(fakeMatterId(1))),
+            'Matter Id is a real record but not a communication record');
+
+        // Structural rejects.
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl(null),   'Null rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl(''),     'Blank rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl('abc'),  'Wrong length rejected');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.commRecordUrl('zzz000000000000'),
+            'Unknown key prefix rejected');
+    }
+
+    // ── Unit Tests: linkifyLogSection ─────────────────────────────────────────
+
+    @isTest
+    static void testLinkifyLogSection() {
+        Id callId = fakeCallId(2);
+        String line = '2026-06-16T15:01|Call|In|Client/Firm|Nm|Custody|Promise|Neutral|3|Q|' + callId;
+
+        String out = MatterCommunicationAnalysisBatch.linkifyLogSection(line);
+        System.assert(out.contains('<a href="/lightning/r/Call_Transcript__c/' + callId + '/view">'),
+            'Trailing record Id should become a link');
+
+        // The 11-field layout and the tone at index 7 must survive untouched.
+        List<String> parts = out.split('\\|', -1);
+        System.assertEquals(11, parts.size(), 'Field count preserved');
+        System.assertEquals('Neutral', MatterCommunicationAnalysisBatch.getToneFromHeader(out), 'Tone field still readable');
+        System.assertEquals(1, MatterCommunicationAnalysisBatch.extractLogHeaderLines(out).size(),
+            'Linked line still parses as a log header');
+
+        // Idempotent — a second pass changes nothing.
+        System.assertEquals(out, MatterCommunicationAnalysisBatch.linkifyLogSection(out), 'Re-linking is a no-op');
+
+        // A bad trailing value is left exactly as-is.
+        String bad = '2026-06-16T15:01|Call|In|Client/Firm|Nm|Custody|Promise|Neutral|3|Q|' + fakeMatterId(2);
+        System.assertEquals(bad, MatterCommunicationAnalysisBatch.linkifyLogSection(bad), 'Matter Id left unlinked');
+
+        // Non-log text and blanks pass through.
+        System.assertEquals('just a sentence', MatterCommunicationAnalysisBatch.linkifyLogSection('just a sentence'),
+            'Free text untouched');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.linkifyLogSection(null), 'Null passes through');
+    }
+
+    // ── Unit Tests: linkifyFactLines ──────────────────────────────────────────
+
+    @isTest
+    static void testLinkifyFactLines() {
+        Id a = fakeEmailId(3);
+        Id b = fakeEmailId(4);
+        String section = '[Custody]\nF|established|Parties agreed on schedule|' + a + ',' + b;
+
+        String out = MatterCommunicationAnalysisBatch.linkifyFactLines(section);
+        System.assert(out.contains('<a href="/lightning/r/EmailMessage/' + a + '/view">'), 'First Id linked');
+        System.assert(out.contains('<a href="/lightning/r/EmailMessage/' + b + '/view">'), 'Second Id linked');
+        System.assert(out.contains('[Custody]'), 'Section header preserved');
+
+        // Idempotent.
+        System.assertEquals(out, MatterCommunicationAnalysisBatch.linkifyFactLines(out), 'Re-linking is a no-op');
+
+        // Nothing linkable → line returned unchanged.
+        String bad = 'F|established|Something happened|not-an-id';
+        System.assertEquals(bad, MatterCommunicationAnalysisBatch.linkifyFactLines(bad), 'Unlinkable line unchanged');
+        System.assertEquals(null, MatterCommunicationAnalysisBatch.linkifyFactLines(null), 'Null passes through');
+    }
+
+    @isTest
+    static void testStripTags() {
+        System.assertEquals('F|fact|text|abc',
+            MatterCommunicationAnalysisBatch.stripTags('F|fact|text|<a href="/x">abc</a>'), 'Tags removed');
+        System.assertEquals('', MatterCommunicationAnalysisBatch.stripTags(null),  'Null returns empty');
+        System.assertEquals('', MatterCommunicationAnalysisBatch.stripTags('   '), 'Blank returns empty');
+    }
+
     // ── Unit Tests: mergeFactLines ────────────────────────────────────────────
 
     @isTest
@@ -278,6 +555,22 @@ private class MatterCommunicationAnalysisBatchTest {
         String mergedTag = MatterCommunicationAnalysisBatch.mergeFactLines('[Issues]\nexisting', withTag);
         System.assert(!mergedTag.contains('<deprecated>'), 'HTML-like tags excluded from facts');
         System.assert(mergedTag.contains('good fact'),     'Normal facts after a tag-line are retained');
+    }
+
+    @isTest
+    static void testMergeFactLines_DedupesAcrossLinkMarkup() {
+        // A previously stored line carries record hyperlinks; the AI returns the same fact
+        // unlinked. Deduplication compares the markup-stripped text, so it must not double up.
+        Id emailId = fakeEmailId(5);
+        String storedLinked = '[Custody]\nF|established|Parties agreed|'
+            + '<a href="/lightning/r/EmailMessage/' + emailId + '/view">' + emailId + '</a>';
+        String returnedPlain = '[Custody]\nF|established|Parties agreed|' + emailId;
+
+        String merged = MatterCommunicationAnalysisBatch.mergeFactLines(storedLinked, returnedPlain);
+
+        System.assertEquals(1, merged.split('Parties agreed', -1).size() - 1,
+            'Same fact must not be stored twice just because one copy is hyperlinked');
+        System.assert(merged.contains('<a href='), 'The stored hyperlinked form is the one kept');
     }
 
     // ── Unit Tests: extractScalarValue ───────────────────────────────────────
@@ -363,24 +656,52 @@ private class MatterCommunicationAnalysisBatchTest {
 
     @isTest
     static void testFormatPromiseHtml() {
+        Id emailId = fakeEmailId(10);
+
         // Full line with all fields
-        String html = MatterCommunicationAnalysisBatch.formatPromiseHtml('2025-01-10|attorney|Will file motion|2025-01-15|a0X123');
-        System.assert(html.contains('<p>'),                  'Promise wrapped in paragraph tag');
-        System.assert(html.contains('Will file motion'),     'Description included');
-        System.assert(html.contains('Due: 2025-01-15'),      'Due date included');
-        System.assert(html.contains('href="/a0X123"'),       'Hyperlink to record included');
-        System.assert(html.contains('View Record'),          'Link label included');
+        String html = MatterCommunicationAnalysisBatch.formatPromiseHtml(
+            '2025-01-10|attorney|Will file motion|2025-01-15|' + emailId);
+        System.assert(html.contains('<p>'),               'Promise wrapped in paragraph tag');
+        System.assert(html.contains('Will file motion'),  'Description included');
+        System.assert(html.contains('Due: 2025-01-15'),   'Due date included');
+        System.assert(html.contains('href="/lightning/r/EmailMessage/' + emailId + '/view"'),
+            'Hyperlink points at the communication record');
+        System.assert(html.contains('View Record'),       'Link label included');
 
         // Due date = NONE → omitted
-        String noDue = MatterCommunicationAnalysisBatch.formatPromiseHtml('2025-01-10|attorney|File motion|NONE|a0X123');
+        String noDue = MatterCommunicationAnalysisBatch.formatPromiseHtml(
+            '2025-01-10|attorney|File motion|NONE|' + emailId);
         System.assert(!noDue.contains('Due:'), 'NONE due date omitted');
 
-        // No record ID → no hyperlink
+        // No record ID → no hyperlink, and no placeholder note either
         String noId = MatterCommunicationAnalysisBatch.formatPromiseHtml('2025-01-10|attorney|File motion|2025-01-15|');
-        System.assert(!noId.contains('href'), 'Blank record ID produces no hyperlink');
+        System.assert(!noId.contains('href'),                          'Blank record ID produces no hyperlink');
+        System.assert(!noId.contains('source record not identified'),  'Blank Id is silent, not annotated');
 
         // Blank input → empty string
         System.assertEquals('', MatterCommunicationAnalysisBatch.formatPromiseHtml(''), 'Blank line returns empty string');
+    }
+
+    @isTest
+    static void testFormatPromiseHtml_RejectsBadRecordIds() {
+        // Every one of these was observed in live Open_Promises__c content and rendered as
+        // a dead link. The promise text must survive; the link must not be produced.
+        List<String> junk = new List<String>{
+            'Related Call Transcript',
+            'Related Meeting Transcript',
+            'View Record',
+            'a035g00000ABCDE',
+            String.valueOf(fakeMatterId(10))
+        };
+
+        for (String bad : junk) {
+            String html = MatterCommunicationAnalysisBatch.formatPromiseHtml(
+                '2025-01-10|attorney|Will file motion|2025-01-15|' + bad);
+            System.assert(html.contains('Will file motion'), 'Promise text kept for: ' + bad);
+            System.assert(!html.contains('href'),            'No hyperlink produced for: ' + bad);
+            System.assert(html.contains('source record not identified'),
+                'Unresolved source is called out for: ' + bad);
+        }
     }
 
     @isTest
@@ -390,13 +711,17 @@ private class MatterCommunicationAnalysisBatchTest {
             Broken_Promises__c    = null
         );
 
+        Id rec1 = fakeEmailId(20);
+        Id rec2 = fakeCallId(20);
+
         // OPEN_PROMISES: set to a value — output should be HTML with hyperlink
         AcctSeed__Project__c mOpen = new AcctSeed__Project__c();
         MatterCommunicationAnalysisBatch.stampScalarFields(mOpen, matter,
-            '==OPEN_PROMISES==\n2025-01-10|attorney|Will file motion|2025-01-15|rec1');
+            '==OPEN_PROMISES==\n2025-01-10|attorney|Will file motion|2025-01-15|' + rec1);
         System.assert(mOpen.Open_Promises__c.contains('<p>'),              'Open promise wrapped in paragraph tag');
         System.assert(mOpen.Open_Promises__c.contains('Will file motion'), 'Description in open promise');
-        System.assert(mOpen.Open_Promises__c.contains('href="/rec1"'),     'Hyperlink to record in open promise');
+        System.assert(mOpen.Open_Promises__c.contains('href="/lightning/r/EmailMessage/' + rec1 + '/view"'),
+            'Hyperlink to communication record in open promise');
 
         // OPEN_PROMISES = NONE → null
         AcctSeed__Project__c mNone = new AcctSeed__Project__c();
@@ -406,17 +731,19 @@ private class MatterCommunicationAnalysisBatchTest {
         // COMPLETED_PROMISES appends HTML to existing content
         AcctSeed__Project__c mCompleted = new AcctSeed__Project__c();
         MatterCommunicationAnalysisBatch.stampScalarFields(mCompleted, matter,
-            '==COMPLETED_PROMISES==\n2025-01-15|attorney|Filed motion|completed|rec1');
+            '==COMPLETED_PROMISES==\n2025-01-15|attorney|Filed motion|completed|' + rec1);
         System.assert(mCompleted.Completed_Promises__c.contains('old promise entry'), 'Existing completed promises preserved on append');
         System.assert(mCompleted.Completed_Promises__c.contains('Filed motion'),      'New completed promise appended as HTML');
-        System.assert(mCompleted.Completed_Promises__c.contains('href="/rec1"'),      'Hyperlink in completed promise');
+        System.assert(mCompleted.Completed_Promises__c.contains('href="/lightning/r/EmailMessage/' + rec1 + '/view"'),
+            'Hyperlink in completed promise');
 
         // BROKEN_PROMISES: no existing → set as HTML
         AcctSeed__Project__c mBroken = new AcctSeed__Project__c();
         MatterCommunicationAnalysisBatch.stampScalarFields(mBroken, matter,
-            '==BROKEN_PROMISES==\n2025-01-15|client|Never sent docs|broken|rec2');
+            '==BROKEN_PROMISES==\n2025-01-15|client|Never sent docs|broken|' + rec2);
         System.assert(mBroken.Broken_Promises__c.contains('Never sent docs'), 'Broken promise description recorded');
-        System.assert(mBroken.Broken_Promises__c.contains('href="/rec2"'),    'Hyperlink in broken promise');
+        System.assert(mBroken.Broken_Promises__c.contains('href="/lightning/r/Call_Transcript__c/' + rec2 + '/view"'),
+            'Hyperlink in broken promise');
 
         // COMPLETED_PROMISES = NONE → not written
         AcctSeed__Project__c mCompNone = new AcctSeed__Project__c();

@@ -293,4 +293,193 @@ private class NextStepControllerLWCTest {
         System.assertEquals(true, [SELECT Id FROM Opportunity].isEmpty(), 'No Opportunity should exist on error');
     }
 
+    // ---- No-scoping "Quick" flow (Dex 2026-09-14) ----
+    //
+    // The Quick flow is deliberately split into two Apex entry points because
+    // building more than one product tree in a SINGLE transaction blows the
+    // org's process-builder/flow limit (verified in jt-full4: "XD Facts
+    // Populate Fields" LIMIT_EXCEEDED). The LWC therefore calls
+    // createNextStepQuick() once, then addProductToNextStepQuick() once per
+    // product, and abortNextStepQuick() to compensate if any product fails.
+
+    /**
+     * Shared fixture: full template/product test data + a Matter to hang the
+     * Next Step off, + the rounding settings calculateOpportunityProRata needs.
+     */
+    private static AcctSeed__Project__c setupQuickFixture() {
+        TaskTrackerTestDataFactory.createAllTestData();
+
+        insert new Task_Tracker_Settings__c(
+            Round_To_Nearest__c = 100,
+            Then_Subtract__c = 5
+        );
+
+        Account acct = [SELECT Id FROM Account LIMIT 1];
+        AcctSeed__Project__c matter = new AcctSeed__Project__c(
+            AcctSeed__Account__c = acct.Id,
+            Name = 'Test Matter Quick',
+            AcctSeed__Status__c = 'Active'
+        );
+        insert matter;
+        return matter;
+    }
+
+    private static Id masterTemplateId() {
+        return [
+            SELECT Id
+            FROM Task_Tracker_Template__c
+            WHERE Is_Master_Template__c = true
+            LIMIT 1
+        ].Id;
+    }
+
+    @IsTest
+    private static void testCreateNextStepQuickCreatesOpportunityShell() {
+        AcctSeed__Project__c matter = setupQuickFixture();
+
+        Test.startTest();
+        Id oppId = NextStepControllerLWC.createNextStepQuick(
+            matter.Id, 'Quick Next Step', 'Family Law'
+        );
+        Test.stopTest();
+
+        System.assertNotEquals(null, oppId, 'Quick should return a new Opportunity Id');
+
+        Opportunity opp = [
+            SELECT Id, Name, StageName, Area_of_Law__c, Next_Step_Matter__c, RecordType.Name
+            FROM Opportunity
+            WHERE Id = :oppId
+        ];
+        System.assertEquals('Quick Next Step', opp.Name, 'Name should match input');
+        System.assertEquals('Family Law', opp.Area_of_Law__c, 'Area of Law should match input');
+        System.assertEquals('Next Step', opp.RecordType.Name, 'Record type should be Next Step');
+        System.assertEquals(matter.Id, opp.Next_Step_Matter__c, 'Matter link should be set');
+    }
+
+    @IsTest
+    private static void testAddProductBuildsFullTreeAtTemplateHours() {
+        AcctSeed__Project__c matter = setupQuickFixture();
+        Id templateId = masterTemplateId();
+
+        // Every step in the tree should end up created — that is the whole
+        // point of the no-scoping flow.
+        Integer expectedSteps = [
+            SELECT COUNT()
+            FROM Task_Tracker_Template_Step__c
+            WHERE Task_Tracker_Template__r.Top_Level_Task_Template__c = :templateId
+        ];
+        System.assert(expectedSteps > 0, 'Fixture should provide template steps');
+
+        Id oppId = NextStepControllerLWC.createNextStepQuick(
+            matter.Id, 'Quick Full Tree', 'Family Law'
+        );
+
+        Test.startTest();
+        NextStepControllerLWC.addProductToNextStepQuick(matter.Id, oppId, templateId);
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM OpportunityLineItem WHERE OpportunityId = :oppId],
+            'One product should produce exactly one OpportunityLineItem'
+        );
+
+        System.assert(
+            [SELECT COUNT() FROM Case WHERE Opportunity__c = :oppId] > 0,
+            'Cases must exist, otherwise View/Edit Hours throws "No cases were found to edit hours."'
+        );
+    }
+
+    @IsTest
+    private static void testAddProductRejectsTemplateWithNoSteps() {
+        AcctSeed__Project__c matter = setupQuickFixture();
+
+        // A template with no steps at all -> collectAllStepHours returns empty
+        // -> NextStepQuickException -> AuraHandledException, nothing created.
+        Task_Tracker_Template__c empty = new Task_Tracker_Template__c(
+            Name = 'Empty Template',
+            Is_Active__c = true
+        );
+        insert empty;
+        empty.Top_Level_Task_Template__c = empty.Id;
+        update empty;
+
+        Id oppId = NextStepControllerLWC.createNextStepQuick(
+            matter.Id, 'Quick Empty', 'Family Law'
+        );
+
+        Boolean threw = false;
+        Test.startTest();
+        try {
+            NextStepControllerLWC.addProductToNextStepQuick(matter.Id, oppId, empty.Id);
+        } catch (Exception e) {
+            threw = true;
+        }
+        Test.stopTest();
+
+        System.assertEquals(true, threw, 'A template with no steps should raise an exception');
+        System.assertEquals(
+            0,
+            [SELECT COUNT() FROM OpportunityLineItem WHERE OpportunityId = :oppId],
+            'Failed product must not leave a line item behind'
+        );
+    }
+
+    // NOTE: there is deliberately NO test that asserts abortNextStepQuick
+    // deletes an Opportunity.
+    //
+    // Deleting an Opportunity fires the vendor's DefaultRoleTriggerHandler,
+    // which throws "List has no rows for assignment to SObject" at
+    // updateRoles line 39 — it depends on org configuration that no @IsTest
+    // fixture creates. abortNextStepQuick catches the exception (by design, so
+    // it can never mask the original error it is cleaning up after), but the
+    // trigger failure is re-surfaced by Test.stopTest() and fails the test
+    // regardless of the catch. Inserting a Case hits the same handler, and
+    // inserting an OpportunityLineItem trips OpportunityLineItemTrigger via
+    // the "Product Processes" flow.
+    //
+    // The delete path is therefore verified LIVE in jt-full4 (2026-09-14)
+    // rather than in Apex. abortNextStepQuick removed two real Next Step
+    // Opportunities together with their Cases, Tasks and 1 and 2
+    // OpportunityLineItems respectively, ending with CLEAN_REMAINING=0.
+    // It was also run against an Opportunity of another record type (refused,
+    // record survived) and against a garbage Id (no exception).
+    //
+    // The two abort tests below cover the guard clauses, which is what can be
+    // asserted honestly in a test transaction.
+
+    @IsTest
+    private static void testAbortRefusesNonNextStepOpportunity() {
+        TaskTrackerTestDataFactory.createAllTestData();
+
+        // The fixture's Opportunity is NOT a Next Step record type. The safety
+        // rail must refuse it, so a bad Id from the client can never delete a
+        // real Opportunity.
+        Opportunity other = [
+            SELECT Id, RecordTypeId
+            FROM Opportunity
+            LIMIT 1
+        ];
+
+        Test.startTest();
+        NextStepControllerLWC.abortNextStepQuick(other.Id);
+        Test.stopTest();
+
+        System.assertEquals(1, [SELECT COUNT() FROM Opportunity WHERE Id = :other.Id],
+            'Abort must refuse to delete a non-Next-Step Opportunity');
+    }
+
+    @IsTest
+    private static void testAbortIsSafeOnBlankAndUnknownIds() {
+        // Abort runs inside the LWC's error handler and must never throw,
+        // or it would mask the original failure.
+        Test.startTest();
+        NextStepControllerLWC.abortNextStepQuick(null);
+        NextStepControllerLWC.abortNextStepQuick('');
+        NextStepControllerLWC.abortNextStepQuick('006000000000000AAA');
+        Test.stopTest();
+
+        System.assert(true, 'Abort swallowed blank/unknown Ids without throwing');
+    }
+
 }

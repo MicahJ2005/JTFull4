@@ -1,0 +1,40 @@
+.lookup-result {
+    cursor: pointer;
+}
+.lookup-result:hover {
+    background-color: var(--slds-g-color-neutral-base-95, #f3f3f3);
+}
+.confirm-match {
+    border: 1px solid var(--slds-g-color-brand-base-50, #0176d3);
+}
+.call-highlight {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--slds-g-color-neutral-base-10, #181818);
+}
+.matter-search-input {
+    min-width: 220px;
+}
+.days-back-select {
+    min-width: 140px;
+}
+.custom-date-input {
+    min-width: 160px;
+}
+.view-as-search {
+    position: relative;
+    min-width: 220px;
+}
+.view-as-results {
+    position: absolute;
+    z-index: 10;
+    background: var(--slds-g-color-surface-1, #fff);
+    width: 100%;
+}
+.toolbar-row {
+    border-bottom: 1px solid var(--slds-g-color-border-base-1, #e5e5e5);
+}
+.pagination-row {
+    border-top: 1px solid var(--slds-g-color-border-base-1, #e5e5e5);
+    padding-top: 0.75rem;
+}

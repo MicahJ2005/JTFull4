@@ -46,7 +46,8 @@ private class CESSchedulingServiceTest {
 
     @TestSetup
     static void setup() {
-        Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        // A CES is identified by profile, so the test user must actually hold it.
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'Client Engagement Specialist' LIMIT 1];
 
         User cesUser = new User(
             FirstName             = 'CES',
@@ -106,7 +107,7 @@ private class CESSchedulingServiceTest {
     @isTest
     static void testGetSlotsWithExistingAppointment() {
         Lead lead    = [SELECT Id FROM Lead LIMIT 1];
-        User cesUser = [SELECT Id FROM User WHERE Title = 'Client Engagement Specialist' LIMIT 1];
+        User cesUser = [SELECT Id FROM User WHERE Profile.Name = 'Client Engagement Specialist' LIMIT 1];
 
         Event existing = new Event(
             Subject             = 'Existing Consultation',
@@ -290,7 +291,7 @@ private class CESSchedulingServiceTest {
     @isTest
     static void testAssignCESMultipleOptions() {
         Id cesA   = UserInfo.getUserId();
-        Id cesB   = [SELECT Id FROM User WHERE Title = 'Client Engagement Specialist' LIMIT 1].Id;
+        Id cesB   = [SELECT Id FROM User WHERE Profile.Name = 'Client Engagement Specialist' LIMIT 1].Id;
         Id result = CESSchedulingService.assignCES(new List<Id>{ cesA, cesB });
         System.assert(result == cesA || result == cesB,
             'Result should be one of the provided CES Ids');
@@ -307,7 +308,7 @@ private class CESSchedulingServiceTest {
         // by confirming only users with the correct Title are included.
         List<User> cesUsers = [
             SELECT Id FROM User
-            WHERE Title    = 'Client Engagement Specialist'
+            WHERE Profile.Name = 'Client Engagement Specialist'
             AND   IsActive = true
         ];
         System.assert(cesUsers.size() >= 0,

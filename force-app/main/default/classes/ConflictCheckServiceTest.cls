@@ -23,17 +23,29 @@ private class ConflictCheckServiceTest {
      * lookups, which is how ConflictCheckService identifies the potential client.
      */
     private static Opportunity newOpp(String opposing, Id clientAccId, Id client2AccId) {
+        return newOpp(opposing, clientAccId, client2AccId, 'Adoption');
+    }
+
+    private static Opportunity newOpp(String opposing, Id clientAccId, Id client2AccId, String areaOfLaw) {
         Opportunity opp = new Opportunity(
             Name = 'Conflict Test Opp',
             StageName = 'Pending Consult',
             CloseDate = Date.today().addDays(30),
-            Area_of_Law__c = 'Adoption',
+            Area_of_Law__c = areaOfLaw,
             Opposing_Party_s_Full_Name__c = opposing,
             AccountId = clientAccId,
             Spouse__c = client2AccId
         );
         insert opp;
         return opp;
+    }
+
+    /** A non-prosecution matter, optionally with a client, at the given status. */
+    private static AcctSeed__Project__c newMatter(String name, String status, Id clientAccId) {
+        AcctSeed__Project__c m = new AcctSeed__Project__c(
+            Name = name, AcctSeed__Status__c = status, AcctSeed__Account__c = clientAccId);
+        insert m;
+        return m;
     }
 
     /** A matter whose Name marks it as a prosecution, at the given status. */
@@ -82,6 +94,171 @@ private class ConflictCheckServiceTest {
         Test.stopTest();
         System.assertEquals(ConflictCheckService.STATUS_NOT_DONE, r.recommendedStatus,
             'a name consisting only of a title is unusable');
+    }
+
+    // =====================================================================
+    //  ESTATE PLANNING: no opposing party expected
+    // =====================================================================
+
+    // ---- blank opposing party on an estate plan -> Pass, not review ---------
+    // This is the change Cami asked for: ~2,800 estate plans were going to manual
+    // review purely because the opposing-party field was blank.
+    @IsTest
+    static void testEstatePlanningBlankOpposing_recommendsPass() {
+        Account client = newPerson('Ethel', 'Planner');
+        Opportunity opp = newOpp(null, client.Id, null, 'Estate Planning');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(ConflictCheckService.STATUS_PASS, r.recommendedStatus,
+            'an estate plan with a clean client should pass despite no opposing party');
+        System.assertEquals(false, r.opposingPartyExpected, 'no opposing party is expected here');
+        System.assert(!r.summaryHtml.contains('could not be completed'),
+            'must not describe this as an incomplete check');
+        System.assert(r.summaryHtml.contains('do not have an opposing party'),
+            'summary should explain why no search ran: ' + r.summaryHtml);
+    }
+
+    // ---- a non-estate-planning blank opposing party still reviews -----------
+    // Regression guard: the relaxation must be scoped to Estate Planning only.
+    @IsTest
+    static void testNonEstatePlanningBlankOpposing_stillNotDone() {
+        Account client = newPerson('Frank', 'Familylaw');
+        Opportunity opp = newOpp(null, client.Id, null, 'Family Law');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(ConflictCheckService.STATUS_NOT_DONE, r.recommendedStatus,
+            'outside estate planning a blank opposing party still forces review');
+        System.assertEquals(true, r.opposingPartyExpected);
+    }
+
+    // ---- estate plans ignore an opposing party even when one IS entered -----
+    // ~700 of 3,504 estate plans carry a value; per the firm it is not checked.
+    @IsTest
+    static void testEstatePlanningIgnoresEnteredOpposingParty() {
+        Account client   = newPerson('Ethel', 'Planner');
+        Account opposing = newPerson('Danny', 'Defendant');
+        // give the opposing party an ACTIVE matter, which would normally Fail
+        insert new AcctSeed__Project__c(
+            AcctSeed__Account__c = opposing.Id, AcctSeed__Status__c = 'Active');
+        Opportunity opp = newOpp('Danny Defendant', client.Id, null, 'Estate Planning');
+        Test.setFixedSearchResults(new List<Id>{ opposing.Id });
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(0, r.matchCount, 'no opposing-party search should run for an estate plan');
+        System.assertEquals(ConflictCheckService.STATUS_PASS, r.recommendedStatus,
+            'the entered opposing party is deliberately ignored on estate plans');
+    }
+
+    // ---- estate plan where the CLIENT is opposing on an ACTIVE matter -------
+    @IsTest
+    static void testEstatePlanningClientOpposingOnActiveMatter_recommendsNotDone() {
+        Account client   = newPerson('Ethel', 'Planner');
+        Account ourOther = newPerson('Olivia', 'Otherclient');
+        AcctSeed__Project__c m = newMatter('Otherclient - Custody', 'Active', ourOther.Id);
+        linkRelatedPerson(client.Id, m.Id);   // class = Opposing Party
+        Opportunity opp = newOpp(null, client.Id, null, 'Estate Planning');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(true, r.clientOpposingOnMatter);
+        System.assertEquals(true, r.clientOpposingOnActiveMatter);
+        System.assertEquals(ConflictCheckService.STATUS_NOT_DONE, r.recommendedStatus,
+            'an active adverse matter reviews rather than fails, per the firm');
+        System.assert(r.summaryHtml.contains('CURRENTLY act against'),
+            'the active case should be called out loudly: ' + r.summaryHtml);
+        System.assert(r.summaryHtml.contains('Otherclient'),
+            'summary should name who we act for');
+        System.assert(r.notesSummary.contains('1+ ACTIVE'),
+            'saved note should flag the active matter: ' + r.notesSummary);
+    }
+
+    // ---- estate plan where the CLIENT is opposing on a CLOSED matter --------
+    @IsTest
+    static void testEstatePlanningClientOpposingOnClosedMatter_recommendsNotDone() {
+        Account client   = newPerson('Ethel', 'Planner');
+        Account ourOther = newPerson('Olivia', 'Otherclient');
+        AcctSeed__Project__c m = newMatter('Otherclient - Divorce', 'Completed', ourOther.Id);
+        linkRelatedPerson(client.Id, m.Id);
+        Opportunity opp = newOpp(null, client.Id, null, 'Estate Planning');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(true, r.clientOpposingOnMatter);
+        System.assertEquals(false, r.clientOpposingOnActiveMatter, 'the matter is Completed');
+        System.assertEquals(ConflictCheckService.STATUS_NOT_DONE, r.recommendedStatus,
+            'a closed adverse matter is flagged for review');
+        System.assert(r.notesSummary.contains('all closed'), 'note should say all closed: ' + r.notesSummary);
+    }
+
+    // ---- the Matters check is scoped to estate planning ---------------------
+    @IsTest
+    static void testMattersCheckDoesNotRunOutsideEstatePlanning() {
+        Account client   = newPerson('Frank', 'Familylaw');
+        Account ourOther = newPerson('Olivia', 'Otherclient');
+        AcctSeed__Project__c m = newMatter('Otherclient - Custody', 'Active', ourOther.Id);
+        linkRelatedPerson(client.Id, m.Id);
+        Opportunity opp = newOpp('Some Opposing Person', client.Id, null, 'Family Law');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(false, r.clientOpposingOnMatter,
+            'the Matters check is scoped to Estate Planning only');
+        System.assertEquals(ConflictCheckService.STATUS_PASS, r.recommendedStatus,
+            'family law with a searched-but-unmatched opposing party still passes');
+    }
+
+    // ---- prosecution still Fails on an estate plan --------------------------
+    @IsTest
+    static void testEstatePlanningActiveProsecution_stillFails() {
+        Account client = newPerson('Ethel', 'Planner');
+        linkRelatedPerson(client.Id, newProsecutionMatter('Active').Id);
+        Opportunity opp = newOpp(null, client.Id, null, 'Estate Planning');
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(ConflictCheckService.STATUS_FAIL, r.recommendedStatus,
+            'we still cannot be hired by someone we are actively prosecuting');
+    }
+
+    @IsTest
+    static void testExpectsNoOpposingParty() {
+        System.assertEquals(true,  ConflictCheckService.expectsNoOpposingParty('Estate Planning'));
+        System.assertEquals(true,  ConflictCheckService.expectsNoOpposingParty('  estate planning  '),
+            'comparison is trimmed and case-insensitive');
+        System.assertEquals(false, ConflictCheckService.expectsNoOpposingParty('Family Law'));
+        System.assertEquals(false, ConflictCheckService.expectsNoOpposingParty('Probate'),
+            'Probate was NOT included - only Estate Planning was asked for');
+        System.assertEquals(false, ConflictCheckService.expectsNoOpposingParty(null));
+    }
+
+    // ---- placeholder names must not manufacture matches --------------------
+    // "NA" is searchable and prefix-matches Nancy/Nathan at 88%, inventing a
+    // conflict against a real client.
+    @IsTest
+    static void testPlaceholderNamesAreNotUsable() {
+        System.assertEquals(false, ConflictCheckService.isUsableName('NA'));
+        System.assertEquals(false, ConflictCheckService.isUsableName('N/A'));
+        System.assertEquals(false, ConflictCheckService.isUsableName('Not Available'));
+        System.assertEquals(false, ConflictCheckService.isUsableName('unknown'));
+        System.assertEquals(false, ConflictCheckService.isUsableName('TBD'));
+        System.assertEquals(true,  ConflictCheckService.isUsableName('Nancy Nathanson'),
+            'a real name that merely starts with the same letters must survive');
+    }
+
+    @IsTest
+    static void testPlaceholderOpposingPartyDoesNotMatch() {
+        Account nancy = newPerson('Nancy', 'Nathanson');
+        Opportunity opp = newOpp('NA', null, null, 'Family Law');
+        Test.setFixedSearchResults(new List<Id>{ nancy.Id });
+        Test.startTest();
+        ConflictCheckService.Result r = run(opp.Id);
+        Test.stopTest();
+        System.assertEquals(0, r.matchCount, '"NA" must not prefix-match Nancy');
+        System.assertEquals(ConflictCheckService.STATUS_NOT_DONE, r.recommendedStatus,
+            'outside estate planning an unusable name still forces review');
     }
 
     // ---- an unsearchable placeholder must NOT auto-Pass ---------------------

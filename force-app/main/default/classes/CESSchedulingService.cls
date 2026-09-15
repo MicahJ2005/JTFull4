@@ -67,11 +67,14 @@ public without sharing class CESSchedulingService {
     // ─────────────────────────────────────────────
 
     public static List<SlotInfo> getAvailableSlots() {
+        // A CES is identified by profile, not by the free text Title field, so a typo or a
+        // title change cannot silently drop someone out of the pool. Kept identical to
+        // SelectMostAvailableCES so both classes agree on who counts as a CES.
         List<User> cesList = [
             SELECT Id, Name, Title
             FROM User
-            WHERE Title    = 'Client Engagement Specialist'
-            AND   IsActive = true
+            WHERE Profile.Name = 'Client Engagement Specialist'
+            AND   IsActive     = true
         ];
 
         if (cesList.isEmpty()) return new List<SlotInfo>();

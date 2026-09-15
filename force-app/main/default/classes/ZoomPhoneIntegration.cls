@@ -1,4 +1,10 @@
-public with sharing class ZoomPhoneIntegration implements Schedulable {
+// without sharing: this class's SOQL/DML (VoiceCall, Call_Transcript__c, Zoom_Integration_Error__c,
+// etc.) also runs from ZoomPhoneWebhookHandler's guest-user REST context, which has essentially no
+// sharing-rule visibility by default. Access here is gated by the webhook's HMAC signature check
+// and the scheduled sync's own trusted execution context, not by record sharing - the existing
+// internal callers (Schedulable, Queueable chains) are already broadly-permissioned users this
+// doesn't restrict either way.
+public without sharing class ZoomPhoneIntegration implements Schedulable {
 
     public void execute(SchedulableContext ctx) {
         sendZoomDataToSalesforce();
@@ -514,7 +520,7 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         return newCalls;
     }
 
-    private static List<CallResponse> sendCallBatchToECI(List<Object> callBatch) {
+    public static List<CallResponse> sendCallBatchToECI(List<Object> callBatch) {
         List<CallResponse> responseList = new List<CallResponse>();
 
         // Reconstruct the filtered JSON payload
@@ -522,12 +528,17 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         filteredInputMap.put('calls', callBatch);
         String filteredJsonInput = JSON.serialize(filteredInputMap);
 
-        // Construct the HTTP request
+        // Construct the HTTP request - routed through the ZoomWebhooksNamedCredentials Named
+        // Credential (OAuth 2.0 Client Credentials Flow, a dedicated integration user) rather than
+        // UserInfo.getSessionId(): a guest user's session (ZoomPhoneWebhookHandler's REST context)
+        // can't authenticate against Salesforce's own REST API, so a session-id header only ever
+        // worked for the polling pipeline's real logged-in session. Using the same Named Credential
+        // for both callers means they now share one consistent, minimally-scoped identity instead
+        // of one path depending on whatever user happened to be running the scheduled job.
         HttpRequest req = new HttpRequest();
-        req.setEndpoint(URL.getOrgDomainUrl().toExternalForm() + '/services/data/v62.0/voicecalls');
+        req.setEndpoint('callout:ZoomWebhooksNamedCredentials/services/data/v62.0/voicecalls');
         req.setMethod('POST');
         req.setTimeout(120000); // Set timeout to 120 seconds
-        req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
         req.setHeader('Content-Type', 'application/json');
         req.setBody(filteredJsonInput);
 
@@ -566,6 +577,209 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
         }
 
         return responseList;
+    }
+
+    /// Entry point for ZoomPhoneWebhookHandler's phone.recording_completed events. Creates the
+    /// VoiceCall directly from the webhook payload instead of waiting on the call-history poll
+    /// (runZoomDataSync's 60-90 minute window) - the same fields the poll extracts from
+    /// /v2/phone/call_history are present on the recording's own webhook payload. Uploading the
+    /// audio right here (rather than later, from the poll's per-recording processing) is what
+    /// makes this possible without a separate "how do we get an upload URL for an already-created
+    /// VoiceCall" mechanism: we get a fresh uploadUrl back from creating the VoiceCall right now.
+    /// No Zoom API token is needed - VoiceCall creation and the audio upload both call Salesforce's
+    /// own REST API (session id auth / the Zoom_Phone Named Credential respectively).
+    public static void processWebhookRecordingCompleted(Map<String, Object> recording, String callId) {
+        List<VoiceCall> existing = [SELECT Id FROM VoiceCall WHERE VendorCallKey = :callId LIMIT 1];
+        if (!existing.isEmpty()) {
+            System.debug('VoiceCall already exists for call_id ' + callId + ' - skipping duplicate creation');
+            return;
+        }
+
+        try {
+            createVoiceCallAndUploadAudio(recording, callId);
+        } catch (Exception e) {
+            // Retryable, unlike a plain ZoomIntegrationErrorLogger.log call - this failure mode
+            // has no simpler identifier to re-fetch the original call data from later (unlike a
+            // transcript retry, which just needs a recording id), so the raw payload itself is
+            // captured to rebuild the same request on retry.
+            logRetryableVoiceCallCreationFailure(recording, callId, e);
+        }
+    }
+
+    /// Core VoiceCall-creation + audio-upload logic, shared between the first webhook attempt
+    /// (processWebhookRecordingCompleted) and processVoiceCallCreationRetry. Throws on any real
+    /// failure (including a per-call failure the VoiceCalls bulk-create API can report even when
+    /// the overall HTTP request succeeds) - callers decide how to log/retry it. Returns normally,
+    /// without creating anything, for a legitimate skip (a short call under 10 seconds).
+    private static void createVoiceCallAndUploadAudio(Map<String, Object> recording, String callId) {
+        Map<String, Object> callMap = buildCallMapFromWebhookRecording(recording, callId);
+        if (callMap == null) {
+            return; // short call (<10s) - not a failure, just skip
+        }
+
+        List<CallResponse> responses = sendCallBatchToECI(new List<Object>{ callMap });
+        if (responses.isEmpty()) {
+            throw new CalloutException('sendCallBatchToECI returned no CallResponse for call_id ' + callId);
+        }
+        if (!responses[0].isSuccess || responses[0].uploadUrl == null) {
+            throw new CalloutException('VoiceCall creation reported failure for call_id ' + callId
+                + '. isSuccess=' + responses[0].isSuccess + ' errorMsg=' + responses[0].errorMsg);
+        }
+
+        String downloadUrl = (String) recording.get('download_url');
+        if (downloadUrl != null) {
+            try {
+                uploadRecording(responses[0].uploadUrl, downloadUrl);
+            } catch (Exception e) {
+                ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'uploadRecording', null, callId, e);
+            }
+        }
+    }
+
+    private static void logRetryableVoiceCallCreationFailure(Map<String, Object> recording, String callId, Exception e) {
+        Zoom_Integration_Error__c logRecord = new Zoom_Integration_Error__c();
+        logRecord.Apex_Class__c = 'ZoomPhoneIntegration';
+        logRecord.Apex_Method__c = 'processWebhookRecordingCompleted';
+        logRecord.Zoom_Meeting_Id__c = callId;
+        logRecord.Recording_Id__c = recording.get('id') != null ? String.valueOf(recording.get('id')) : null;
+        logRecord.Error_Type__c = 'Voice Call Creation Failed';
+        logRecord.Error_Message__c = e.getMessage();
+        logRecord.Stack_Trace__c = e.getStackTraceString();
+        logRecord.Raw_Payload__c = JSON.serialize(recording);
+        logRecord.Retry_Count__c = 0;
+        logRecord.Next_Retry_At__c = Datetime.now().addMinutes(RETRY_DELAY_MINUTES);
+        logRecord.Resolved__c = false;
+
+        try {
+            insert logRecord;
+        } catch (Exception insertEx) {
+            System.debug(LoggingLevel.ERROR, 'Failed to insert Zoom_Integration_Error__c for processWebhookRecordingCompleted: ' + insertEx.getMessage());
+        }
+    }
+
+    /// Picks up recordings whose VoiceCall creation previously failed and are now due for another
+    /// attempt, per Zoom_Integration_Error__c's Next_Retry_At__c. Mirrors retryPendingTranscripts,
+    /// but for the earlier failure point (creating the VoiceCall itself) rather than attaching a
+    /// transcript to one that should already exist - a call whose recording_completed processing
+    /// failed outright has no VoiceCall for a transcript retry to find no matter how many times
+    /// it's attempted, so this is a separate retry pass keyed off Error_Type__c instead of
+    /// Recording_Id__c.
+    public static void retryPendingVoiceCallCreations() {
+        List<Zoom_Integration_Error__c> dueRetries = [
+            SELECT Id, Zoom_Meeting_Id__c, Raw_Payload__c, Retry_Count__c
+            FROM Zoom_Integration_Error__c
+            WHERE Resolved__c = false AND Error_Type__c = 'Voice Call Creation Failed' AND Next_Retry_At__c <= :Datetime.now()
+            ORDER BY Next_Retry_At__c ASC
+            LIMIT 50
+        ];
+
+        if (dueRetries.isEmpty()) {
+            return;
+        }
+
+        System.enqueueJob(new ZoomPhoneVoiceCallRetryQueueable(dueRetries, 0));
+    }
+
+    /// Per-record body of the VoiceCall-creation retry pass: rebuilds the original request from
+    /// the raw payload captured on the failed attempt and retries it. On success (or finding a
+    /// VoiceCall already exists - e.g. a later duplicate webhook succeeded independently in the
+    /// meantime) marks the retry resolved; on failure, reschedules up to
+    /// MAX_TRANSCRIPT_RETRY_ATTEMPTS times before giving up. Called once per pending retry from
+    /// ZoomPhoneVoiceCallRetryQueueable, each in its own transaction.
+    public static void processVoiceCallCreationRetry(Zoom_Integration_Error__c retryRecord) {
+        String callId = retryRecord.Zoom_Meeting_Id__c;
+        try {
+            List<VoiceCall> existing = [SELECT Id FROM VoiceCall WHERE VendorCallKey = :callId LIMIT 1];
+            if (existing.isEmpty()) {
+                Map<String, Object> recording = (Map<String, Object>) JSON.deserializeUntyped(retryRecord.Raw_Payload__c);
+                createVoiceCallAndUploadAudio(recording, callId);
+            }
+            retryRecord.Resolved__c = true;
+            update retryRecord;
+        } catch (Exception e) {
+            Integer attempts = (retryRecord.Retry_Count__c != null ? retryRecord.Retry_Count__c.intValue() : 0) + 1;
+            retryRecord.Retry_Count__c = attempts;
+            retryRecord.Error_Message__c = e.getMessage();
+            retryRecord.Stack_Trace__c = e.getStackTraceString();
+            if (attempts < MAX_TRANSCRIPT_RETRY_ATTEMPTS) {
+                retryRecord.Next_Retry_At__c = Datetime.now().addMinutes(RETRY_DELAY_MINUTES);
+            } else {
+                retryRecord.Resolved__c = true;
+            }
+            update retryRecord;
+        }
+    }
+
+    /// NOTE: field names (date_time, end_time, caller_number, callee_number, direction,
+    /// owner.extension_number, download_url) are assumed to mirror the same shape already
+    /// confirmed for phone.recording_transcript_completed's payload.object.recordings[] entries.
+    /// Confirm against a real captured phone.recording_completed delivery and adjust here if they
+    /// differ, the same way the transcript-completed payload shape needed correcting.
+    private static Map<String, Object> buildCallMapFromWebhookRecording(Map<String, Object> recording, String callId) {
+        String startDateTime = (String) recording.get('date_time');
+        String endDateTime = (String) recording.get('end_time');
+        String direction = (String) recording.get('direction');
+        String toPhoneNumber = (String) recording.get('callee_number');
+        String fromPhoneNumber = (String) recording.get('caller_number');
+
+        if (startDateTime == null || endDateTime == null || direction == null
+            || toPhoneNumber == null || fromPhoneNumber == null) {
+            // Throws (rather than silently returning null, as this used to) so
+            // processWebhookRecordingCompleted's existing catch block logs it - this used to be a
+            // completely silent failure with no trace anywhere, which is exactly how a
+            // phone.recording_completed payload shape mismatch would produce a VoiceCall that
+            // never gets created and no error to explain why. Includes the raw recording object so
+            // the actual payload shape is visible on the logged record, the same way
+            // recording_transcript_completed's shape needed correcting once already.
+            throw new CalloutException('Missing required field(s) on phone.recording_completed payload for call_id '
+                + callId + '. Raw recording object: ' + JSON.serialize(recording));
+        }
+
+        Integer durationInSeconds;
+        try {
+            Datetime startDt = Datetime.valueOfGmt(startDateTime.replace('T', ' ').replace('Z', ''));
+            Datetime endDt = Datetime.valueOfGmt(endDateTime.replace('T', ' ').replace('Z', ''));
+            durationInSeconds = (Integer) ((endDt.getTime() - startDt.getTime()) / 1000);
+        } catch (Exception e) {
+            throw new CalloutException('Could not parse date_time/end_time on phone.recording_completed payload for call_id '
+                + callId + '. Raw recording object: ' + JSON.serialize(recording));
+        }
+        if (durationInSeconds < 10) {
+            return null; // legitimate skip (short call) - not a bug, nothing to log
+        }
+
+        ZoomConfig__mdt cfg = [SELECT DefaultUserId__c FROM ZoomConfig__mdt WHERE DeveloperName = 'Default' LIMIT 1];
+        String userId = cfg.DefaultUserId__c;
+        Map<String, Object> owner = (Map<String, Object>) recording.get('owner');
+        String extension = owner != null && owner.get('extension_number') != null
+            ? String.valueOf(owner.get('extension_number')) : null;
+        if (extension != null) {
+            Map<String, User> extensionMap = buildUserExtensionMap();
+            if (extensionMap.containsKey(extension)) {
+                userId = extensionMap.get(extension).Id;
+            }
+        }
+
+        String mediaProviderId = '123';
+        if (!Test.isRunningTest()) {
+            CallCoachingMediaProvider mediaProvider = [
+                SELECT Id FROM CallCoachingMediaProvider WHERE ProviderName = 'Zoom Phone' LIMIT 1
+            ];
+            mediaProviderId = mediaProvider.Id;
+        }
+
+        Map<String, Object> callMap = new Map<String, Object>();
+        callMap.put('startDateTime', startDateTime);
+        callMap.put('endDateTime', endDateTime);
+        callMap.put('callType', direction.toLowerCase() == 'inbound' ? 'Inbound' : direction.toLowerCase() == 'outbound' ? 'Outbound' : 'Unknown');
+        callMap.put('userId', userId);
+        callMap.put('toPhoneNumber', toPhoneNumber);
+        callMap.put('fromPhoneNumber', fromPhoneNumber);
+        callMap.put('recordingDuration', durationInSeconds);
+        callMap.put('externalId', callId);
+        callMap.put('recordingFormat', 'mp3');
+        callMap.put('mediaProviderId', mediaProviderId);
+        return callMap;
     }
 
     public static void processRecordings(String token, List<CallResponse> responses, String fromDateTime, String toDateTime) {
@@ -827,15 +1041,11 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             return;
         }
 
-        ZoomConfig__mdt cfg = [
-            SELECT AccountId__c, ClientId__c, ClientSecret__c
-            FROM   ZoomConfig__mdt
-            WHERE  DeveloperName = 'Default'
-            LIMIT  1
-        ];
-        String token = getZoomToken(cfg.ClientId__c, cfg.ClientSecret__c, cfg.AccountId__c);
-
-        System.enqueueJob(new ZoomPhoneTranscriptRetryQueueable(token, dueRetries, 0));
+        // Token fetch is deferred to the Queueable itself, not done here - Scheduled Apex's
+        // execute() doesn't allow synchronous callouts ("Callout from scheduled Apex not
+        // supported"), and this method is called directly from a Schedulable's execute()
+        // (both ZoomPhoneIntegration's own and ZoomPhoneTranscriptRetrySchedulable's).
+        System.enqueueJob(new ZoomPhoneTranscriptRetryQueueable(null, dueRetries, 0));
     }
 
     /// Per-recording body of the retry pass: re-fetches the transcript for one previously
@@ -868,14 +1078,19 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             Boolean stillRetryable = (e.getMessage() != null && e.getMessage().contains('"code":12002'))
                 || e instanceof VoiceCallNotFoundException;
 
+            // Update the same tracked row rather than also calling ZoomIntegrationErrorLogger.log
+            // here - that used to insert a brand new Zoom_Integration_Error__c record on every
+            // failed attempt (not just the final give-up), so one stuck call retried several times
+            // produced several extra rows on top of the one real tracking row.
             retryRecord.Retry_Count__c = attempts;
+            retryRecord.Error_Message__c = e.getMessage();
+            retryRecord.Stack_Trace__c = e.getStackTraceString();
             if (stillRetryable && attempts < MAX_TRANSCRIPT_RETRY_ATTEMPTS) {
                 retryRecord.Next_Retry_At__c = Datetime.now().addMinutes(RETRY_DELAY_MINUTES);
             } else {
                 retryRecord.Resolved__c = true;
             }
             update retryRecord;
-            ZoomIntegrationErrorLogger.log('ZoomPhoneIntegration', 'processTranscriptRetry', null, retryRecord.Recording_Id__c, e);
         }
     }
 
@@ -1189,12 +1404,16 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
                           'Zoom_Phone' + lineBreak + // Pass the literal string "namedCredential"
                           '--' + boundary + '--' + lineBreak;
     
-            // Set up HTTP request
+            // Set up HTTP request - uploadUrl comes back as an absolute URL (its domain isn't
+            // guaranteed to match URL.getOrgDomainUrl()'s exact form - Salesforce can hand back a
+            // different canonical form for the same org), so route it through
+            // ZoomWebhooksNamedCredentials by path alone rather than trying to strip a specific
+            // domain prefix. See the note on sendCallBatchToECI for why this replaces
+            // UserInfo.getSessionId().
             HttpRequest req = new HttpRequest();
-            req.setEndpoint(uploadUrl); // The Salesforce upload endpoint
+            req.setEndpoint('callout:ZoomWebhooksNamedCredentials' + extractServicesPath(uploadUrl));
             req.setMethod('POST');
             req.setHeader('Content-Type', 'multipart/form-data; boundary=' + boundary);
-            req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId()); // Authenticate to Salesforce
             req.setTimeout(120000);
             req.setBody(body);
 
@@ -1202,16 +1421,27 @@ public with sharing class ZoomPhoneIntegration implements Schedulable {
             Http http = new Http();
             HTTPResponse res = http.send(req);
             System.debug('Response: ' + res.getStatusCode());
-    
+
             // Handle the response
             if (res.getStatusCode() == 204) {
                 return 'Audio uploaded successfully';
             } else {
-                throw new CalloutException('Failed to upload audio. Status: ' + res.getStatusCode() + ', Response: ' + res.getBody());
+                throw new CalloutException('Failed to upload audio. Status: ' + res.getStatusCode() + ', Response: ' + res.getBody() + '. uploadUrl was: ' + uploadUrl);
             }
         } catch (Exception ex) {
             throw new CalloutException('Error during audio upload: ' + ex.getMessage());
         }
+    }
+
+    /// Extracts the "/services/..." path (and anything after it) from an absolute URL, so it can
+    /// be appended straight to a "callout:NamedCredentialName" prefix regardless of exactly which
+    /// domain form Salesforce used for the absolute URL it handed back.
+    private static String extractServicesPath(String absoluteUrl) {
+        Integer servicesIndex = absoluteUrl.indexOf('/services/');
+        if (servicesIndex == -1) {
+            throw new CalloutException('Could not find /services/ path in URL: ' + absoluteUrl);
+        }
+        return absoluteUrl.substring(servicesIndex);
     }
 
     public static String stripBaseUrl(String fullUrl, String baseUrl) {

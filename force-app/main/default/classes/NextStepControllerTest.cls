@@ -213,5 +213,84 @@ private class NextStepControllerTest {
         System.assertEquals(true, testOpps.isEmpty(),'An Opportunity Record Exists!');
         
     }
-    
+
+    // ---- LWC migration methods (Dex 2026-08-04) ----
+
+    @IsTest
+    private static void testGetNextStepInit() {
+        TaskTrackerTestDataFactory.createAllTestData();
+
+        Account acct = [SELECT Id FROM Account LIMIT 1];
+        AcctSeed__Project__c matter = new AcctSeed__Project__c(
+            AcctSeed__Account__c = acct.Id,
+            Name = 'Test Matter Init',
+            AcctSeed__Status__c = 'Active'
+        );
+        insert matter;
+
+        Test.startTest();
+        NextStepController.NextStepInit init = NextStepController.getNextStepInit(matter.Id);
+        Test.stopTest();
+
+        System.assertNotEquals(null, init, 'Init payload should not be null');
+        System.assert(!init.areaOfLawOptions.isEmpty(), 'Area of Law options should be populated from the Opportunity picklist');
+        // Product options depend on Product2 w/ Task_Tracker_Template__c in the
+        // test data set; assert the collection exists (may be empty in a minimal
+        // fixture) and that any present option carries a label + value.
+        System.assertNotEquals(null, init.productOptions, 'Product options list should be initialized');
+        for(NextStepController.PicklistOption opt : init.productOptions) {
+            System.assertNotEquals(null, opt.label, 'Product option label should be set');
+            System.assertNotEquals(null, opt.value, 'Product option value (template Id) should be set');
+        }
+    }
+
+    @IsTest
+    private static void testCreateNextStepOpportunityFromMatter() {
+        TaskTrackerTestDataFactory.createAllTestData();
+
+        Account acct = [SELECT Id FROM Account LIMIT 1];
+        AcctSeed__Project__c matter = new AcctSeed__Project__c(
+            AcctSeed__Account__c = acct.Id,
+            Name = 'Test Matter FromMatter',
+            AcctSeed__Status__c = 'Active'
+        );
+        insert matter;
+
+        Test.startTest();
+        Id oppId = NextStepController.createNextStepOpportunityFromMatter(
+            matter.Id, 'CGDEV Next Step - LWC', 'Family Law'
+        );
+        Test.stopTest();
+
+        System.assertNotEquals(null, oppId, 'Opportunity should have been created');
+
+        Opportunity opp = [
+            SELECT Id, Name, StageName, Area_of_Law__c, AccountId,
+                   Next_Step_Matter__c, RecordType.Name
+            FROM Opportunity
+            WHERE Id = :oppId
+        ];
+        System.assertEquals('CGDEV Next Step - LWC', opp.Name, 'Name should match input');
+        System.assertEquals('Family Law', opp.Area_of_Law__c, 'Area of Law should match input');
+        System.assertEquals('Next Step Opportunity Submitted', opp.StageName, 'Stage should be set server-side');
+        System.assertEquals(acct.Id, opp.AccountId, 'Account should be derived from the Matter');
+        System.assertEquals(matter.Id, opp.Next_Step_Matter__c, 'Matter link should be set');
+        System.assertEquals('Next Step', opp.RecordType.Name, 'Record type should be Next Step');
+    }
+
+    @IsTest
+    private static void errorTestForCreateNextStepOpportunityFromMatter() {
+        Boolean threw = false;
+        Test.startTest();
+        try {
+            // Null matter Id -> query throws -> AuraHandledException, no Opp created.
+            NextStepController.createNextStepOpportunityFromMatter(null, 'x', 'Family Law');
+        } catch (Exception e) {
+            threw = true;
+        }
+        Test.stopTest();
+        System.assertEquals(true, threw, 'A null Matter Id should raise an exception');
+        System.assertEquals(true, [SELECT Id FROM Opportunity].isEmpty(), 'No Opportunity should exist on error');
+    }
+
 }

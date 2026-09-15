@@ -57,7 +57,7 @@ private class ZoomPhoneIntegrationTest {
             ZoomPhoneIntegration.CallResponse mockCall = new ZoomPhoneIntegration.CallResponse();
             mockCall.externalId = '12345';
             mockCall.voiceCallId = '67890';
-            mockCall.uploadUrl = 'https://example.com/upload';
+            mockCall.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
             mockCall.isSuccess = true;
             mockCall.errorMsg = null;
             
@@ -232,7 +232,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
 
@@ -255,7 +255,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
 
@@ -281,7 +281,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
 
@@ -309,7 +309,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
 
@@ -339,7 +339,7 @@ private class ZoomPhoneIntegrationTest {
 
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
 
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{
@@ -387,7 +387,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
 
@@ -419,7 +419,7 @@ private class ZoomPhoneIntegrationTest {
         };
         ZoomPhoneIntegration.CallResponse resp = new ZoomPhoneIntegration.CallResponse();
         resp.externalId = '12345';
-        resp.uploadUrl = 'https://example.com/upload';
+        resp.uploadUrl = 'https://example.com/services/upload/VoiceCallRecording/123';
         resp.voiceCallId = '0Aa000000000001';
         resp.isSuccess = true;
         Map<String, ZoomPhoneIntegration.CallResponse> responseMap = new Map<String, ZoomPhoneIntegration.CallResponse>{ '12345' => resp };
@@ -482,6 +482,11 @@ private class ZoomPhoneIntegrationTest {
         System.assertEquals(false, updated.Resolved__c, 'Still processing should keep the retry pending');
         System.assertEquals(1, updated.Retry_Count__c);
         System.assert(updated.Next_Retry_At__c > Datetime.now(), 'Next attempt should be rescheduled into the future');
+
+        // A failed retry attempt should update the same row, not also insert a second one - it
+        // used to insert an extra plain error record on every failed attempt via
+        // ZoomIntegrationErrorLogger.log, inflating the apparent number of distinct stuck calls.
+        System.assertEquals(1, [SELECT COUNT() FROM Zoom_Integration_Error__c], 'A failed retry should not create a second record');
     }
 
     @isTest
@@ -531,6 +536,233 @@ private class ZoomPhoneIntegrationTest {
         Test.stopTest();
 
         System.assertEquals(1, responses.size(), 'The call has no existing VoiceCall, so it should still be sent to the create endpoint');
+    }
+
+    private class RecordingCompletedMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            String endpoint = req.getEndpoint();
+            if (endpoint.contains('/voicecalls')) return new SalesforceApiMock().respond(req);
+            if (endpoint.contains('upload')) return new UploadRecordingsMock().respond(req);
+            HttpResponse fallback = new HttpResponse(); fallback.setStatusCode(404); fallback.setBody('Unknown endpoint');
+            return fallback;
+        }
+    }
+
+    private class RecordingCompletedUploadFailsMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            String endpoint = req.getEndpoint();
+            if (endpoint.contains('/voicecalls')) return new SalesforceApiMock().respond(req);
+            if (endpoint.contains('upload')) return new UploadRecordingsFailMock().respond(req);
+            HttpResponse fallback = new HttpResponse(); fallback.setStatusCode(404); fallback.setBody('Unknown endpoint');
+            return fallback;
+        }
+    }
+
+    // Simulates the VoiceCalls bulk-create endpoint returning 201 overall (so sendCallBatchToECI
+    // doesn't throw) while the individual call within the batch reports its own failure -
+    // previously discarded silently with no logging anywhere.
+    private class PerCallFailureMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setStatusCode(201);
+            ZoomPhoneIntegration.CallResponse mockCall = new ZoomPhoneIntegration.CallResponse();
+            mockCall.externalId = '12345';
+            mockCall.isSuccess = false;
+            mockCall.errorMsg = 'DUPLICATE_EXTERNAL_ID';
+            res.setBody(JSON.serialize(new Map<String, Object>{ 'calls' => new List<Object>{ mockCall } }));
+            return res;
+        }
+    }
+
+    private static Map<String, Object> buildRecordingCompletedPayload() {
+        return new Map<String, Object>{
+            'id' => 'rec1',
+            'call_id' => '12345',
+            'date_time' => '2026-09-14T16:51:51Z',
+            'end_time' => '2026-09-14T16:54:05Z',
+            'direction' => 'outbound',
+            'caller_number' => '8984',
+            'callee_number' => '+16127241972',
+            'download_url' => 'https://zoom.us/v2/phone/recording/download/rec1',
+            'owner' => new Map<String, Object>{ 'extension_number' => '8984' }
+        };
+    }
+
+    @isTest
+    static void testProcessWebhookRecordingCompletedCreatesVoiceCallAndUploadsAudio() {
+        Test.setMock(HttpCalloutMock.class, new RecordingCompletedMock());
+
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookRecordingCompleted(buildRecordingCompletedPayload(), '12345');
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Zoom_Integration_Error__c], 'A fully successful recording_completed should log nothing');
+    }
+
+    @isTest
+    static void testProcessWebhookRecordingCompletedLogsUploadFailureButStillSucceedsCreatingVoiceCall() {
+        // Upload and VoiceCall creation are independent - a failed upload shouldn't be treated as
+        // if the whole recording_completed event failed, matching the same decoupling already
+        // applied to the polling path (buildTranscriptForRecording).
+        Test.setMock(HttpCalloutMock.class, new RecordingCompletedUploadFailsMock());
+
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookRecordingCompleted(buildRecordingCompletedPayload(), '12345');
+        Test.stopTest();
+
+        List<Zoom_Integration_Error__c> errors = [SELECT Apex_Method__c FROM Zoom_Integration_Error__c];
+        System.assertEquals(1, errors.size());
+        System.assertEquals('uploadRecording', errors[0].Apex_Method__c);
+    }
+
+    @isTest
+    static void testProcessWebhookRecordingCompletedLogsPerCallCreationFailure() {
+        // The VoiceCalls bulk-create endpoint can return 201 overall while an individual call in
+        // the batch reports its own failure (isSuccess: false) - this used to be silently
+        // discarded with no logging anywhere, which is exactly how a VoiceCall could fail to be
+        // created with zero trace of why.
+        Test.setMock(HttpCalloutMock.class, new PerCallFailureMock());
+
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookRecordingCompleted(buildRecordingCompletedPayload(), '12345');
+        Test.stopTest();
+
+        List<Zoom_Integration_Error__c> errors = [SELECT Apex_Method__c, Error_Message__c FROM Zoom_Integration_Error__c];
+        System.assertEquals(1, errors.size(), 'A per-call creation failure should be logged, not silently discarded');
+        System.assertEquals('processWebhookRecordingCompleted', errors[0].Apex_Method__c);
+        System.assert(errors[0].Error_Message__c.contains('DUPLICATE_EXTERNAL_ID'), 'The per-call errorMsg should be captured for diagnosis');
+    }
+
+    @isTest
+    static void testProcessWebhookRecordingCompletedSkipsShortCalls() {
+        Map<String, Object> shortCall = buildRecordingCompletedPayload();
+        shortCall.put('end_time', '2026-09-14T16:51:55Z'); // 4 seconds after date_time - under the 10s floor
+
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookRecordingCompleted(shortCall, '12345');
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Zoom_Integration_Error__c], 'Skipping a short call is not an error');
+    }
+
+    @isTest
+    static void testProcessWebhookRecordingCompletedLogsMissingRequiredFields() {
+        // A silent, unlogged skip here is exactly how a phone.recording_completed payload shape
+        // mismatch would produce a VoiceCall that never gets created with no trace anywhere - this
+        // must be logged (with the raw payload) rather than silently ignored.
+        Map<String, Object> incomplete = new Map<String, Object>{ 'call_id' => '12345' };
+
+        Test.startTest();
+        ZoomPhoneIntegration.processWebhookRecordingCompleted(incomplete, '12345');
+        Test.stopTest();
+
+        List<Zoom_Integration_Error__c> errors = [
+            SELECT Apex_Method__c, Error_Message__c, Error_Type__c, Resolved__c, Raw_Payload__c, Retry_Count__c
+            FROM Zoom_Integration_Error__c
+        ];
+        System.assertEquals(1, errors.size(), 'Missing required fields should be logged, not silently skipped');
+        System.assertEquals('processWebhookRecordingCompleted', errors[0].Apex_Method__c);
+        System.assert(errors[0].Error_Message__c.contains('Missing required field'));
+
+        // Retryable, unlike a generic ZoomIntegrationErrorLogger.log call - there's no VoiceCall
+        // for a transcript retry to eventually find here, since creation itself never succeeded.
+        System.assertEquals('Voice Call Creation Failed', errors[0].Error_Type__c);
+        System.assertEquals(false, errors[0].Resolved__c);
+        System.assertEquals(0, errors[0].Retry_Count__c);
+        System.assertNotEquals(null, errors[0].Raw_Payload__c, 'The raw payload should be captured so a retry can rebuild the request');
+    }
+
+    @isTest
+    static void testProcessVoiceCallCreationRetrySucceeds() {
+        Test.setMock(HttpCalloutMock.class, new RecordingCompletedMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'ZoomPhoneIntegration', Apex_Method__c = 'processWebhookRecordingCompleted',
+            Error_Type__c = 'Voice Call Creation Failed', Zoom_Meeting_Id__c = '12345',
+            Raw_Payload__c = JSON.serialize(buildRecordingCompletedPayload()),
+            Retry_Count__c = 1, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processVoiceCallCreationRetry(retryRecord);
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id];
+        System.assertEquals(true, updated.Resolved__c, 'A successful retry should mark the record resolved');
+    }
+
+    @isTest
+    static void testProcessVoiceCallCreationRetryReschedulesOnFailure() {
+        Test.setMock(HttpCalloutMock.class, new PerCallFailureMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'ZoomPhoneIntegration', Apex_Method__c = 'processWebhookRecordingCompleted',
+            Error_Type__c = 'Voice Call Creation Failed', Zoom_Meeting_Id__c = '12345',
+            Raw_Payload__c = JSON.serialize(buildRecordingCompletedPayload()),
+            Retry_Count__c = 1, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processVoiceCallCreationRetry(retryRecord);
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [
+            SELECT Resolved__c, Retry_Count__c, Next_Retry_At__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id
+        ];
+        System.assertEquals(false, updated.Resolved__c, 'A still-failing retry should stay pending until max attempts');
+        System.assertEquals(2, updated.Retry_Count__c);
+        System.assert(updated.Next_Retry_At__c > Datetime.now(), 'Next attempt should be rescheduled into the future');
+    }
+
+    @isTest
+    static void testProcessVoiceCallCreationRetryGivesUpAfterMaxAttempts() {
+        Test.setMock(HttpCalloutMock.class, new PerCallFailureMock());
+
+        Zoom_Integration_Error__c retryRecord = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'ZoomPhoneIntegration', Apex_Method__c = 'processWebhookRecordingCompleted',
+            Error_Type__c = 'Voice Call Creation Failed', Zoom_Meeting_Id__c = '12345',
+            Raw_Payload__c = JSON.serialize(buildRecordingCompletedPayload()),
+            Retry_Count__c = 4, Next_Retry_At__c = Datetime.now(), Resolved__c = false
+        );
+        insert retryRecord;
+
+        Test.startTest();
+        ZoomPhoneIntegration.processVoiceCallCreationRetry(retryRecord);
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c, Retry_Count__c FROM Zoom_Integration_Error__c WHERE Id = :retryRecord.Id];
+        System.assertEquals(true, updated.Resolved__c, 'Should give up once MAX_TRANSCRIPT_RETRY_ATTEMPTS is reached');
+        System.assertEquals(5, updated.Retry_Count__c);
+    }
+
+    @isTest
+    static void testRetryPendingVoiceCallCreationsProcessesDueRetries() {
+        Test.setMock(HttpCalloutMock.class, new RecordingCompletedMock());
+
+        Zoom_Integration_Error__c dueRetry = new Zoom_Integration_Error__c(
+            Apex_Class__c = 'ZoomPhoneIntegration', Apex_Method__c = 'processWebhookRecordingCompleted',
+            Error_Type__c = 'Voice Call Creation Failed', Zoom_Meeting_Id__c = '12345',
+            Raw_Payload__c = JSON.serialize(buildRecordingCompletedPayload()),
+            Retry_Count__c = 0, Next_Retry_At__c = Datetime.now().addMinutes(-5), Resolved__c = false
+        );
+        insert dueRetry;
+
+        Test.startTest();
+        ZoomPhoneIntegration.retryPendingVoiceCallCreations();
+        Test.stopTest();
+
+        Zoom_Integration_Error__c updated = [SELECT Resolved__c FROM Zoom_Integration_Error__c WHERE Id = :dueRetry.Id];
+        System.assertEquals(true, updated.Resolved__c, 'The due retry should have been processed and resolved via the enqueued job');
+    }
+
+    @isTest
+    static void testRetryPendingVoiceCallCreationsNoOpWhenNoneDue() {
+        Test.startTest();
+        ZoomPhoneIntegration.retryPendingVoiceCallCreations();
+        Test.stopTest();
+        // Nothing due, so no callout/job should be attempted - just asserting no exception here.
     }
 
     @isTest
@@ -645,10 +877,26 @@ private class ZoomPhoneIntegrationTest {
         Test.setMock(HttpCalloutMock.class, new UploadRecordingsFailMock());
         Test.startTest();
         try {
-            ZoomPhoneIntegration.uploadRecording('https://example.com/upload', 'https://zoom.us/recordings/fail');
+            ZoomPhoneIntegration.uploadRecording('https://example.com/services/upload/VoiceCallRecording/123', 'https://zoom.us/recordings/fail');
             System.assert(false, 'Expected exception');
         } catch (Exception e) {
             System.assert(e.getMessage().contains('upload'));
+        }
+        Test.stopTest();
+    }
+
+    @isTest
+    static void testUploadRecordingThrowsWhenUploadUrlHasNoServicesPath() {
+        // uploadUrl's domain isn't guaranteed to match URL.getOrgDomainUrl()'s exact form, so the
+        // rewrite anchors on "/services/" appearing somewhere in the URL rather than a specific
+        // domain prefix - this proves a URL missing that anchor fails loudly instead of silently
+        // sending a malformed request.
+        Test.startTest();
+        try {
+            ZoomPhoneIntegration.uploadRecording('https://example.com/upload', 'https://zoom.us/recordings/fail');
+            System.assert(false, 'Expected exception');
+        } catch (Exception e) {
+            System.assert(e.getMessage().contains('/services/'), 'Expected the missing /services/ path to be called out: ' + e.getMessage());
         }
         Test.stopTest();
     }

@@ -40,6 +40,97 @@ public without sharing class NextStepController {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // LWC migration (Dex 2026-08-04): replaces the Next_Step screen flow's
+    // data-gathering + the client-side blind-insert. The old
+    // createNextStepOpportunity(String) is retained for the legacy Aura
+    // component until the quick action is repointed and the Aura bundle
+    // retired. @AuraEnabled cannot be overloaded, hence the distinct name.
+    // ---------------------------------------------------------------------
+
+    /**
+    * @description Initializes the Next Step LWC: option lists + the Matter
+    *   context the Opportunity builder needs. Replaces the flow's Get/Assign
+    *   nodes (record type, pricebook, area-of-law choices, product choices).
+    * @param matterId AcctSeed__Project__c Id (the record the quick action runs on)
+    * @return NextStepInit
+    **/
+    @AuraEnabled(cacheable=true)
+    public static NextStepInit getNextStepInit(Id matterId) {
+        try {
+            NextStepInit init = new NextStepInit();
+
+            // Area of Law choices — sourced from the Opportunity picklist,
+            // exactly like the flow's AreaOfLaw dynamic choice set.
+            for(Schema.PicklistEntry e : Opportunity.Area_of_Law__c.getDescribe().getPicklistValues()) {
+                if(e.isActive()) {
+                    init.areaOfLawOptions.add(new PicklistOption(e.getLabel(), e.getValue()));
+                }
+            }
+
+            // Product choices — ACTIVE Product2 with a Task Tracker Template, value = the
+            // template Id (mirrors the flow's ProductChoices: display Name, value Task_Tracker_Template__c).
+            // IsActive filter added 2026-08-04 (Chris): only active products should be selectable.
+            for(Product2 p : [
+                SELECT Name, Task_Tracker_Template__c
+                FROM Product2
+                WHERE Task_Tracker_Template__c != null
+                  AND IsActive = true
+                ORDER BY Name ASC
+            ]) {
+                init.productOptions.add(new PicklistOption(p.Name, p.Task_Tracker_Template__c));
+            }
+
+            return init;
+        } catch (Exception e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    /**
+    * @description Builds and inserts the Next Step Opportunity SERVER-SIDE from
+    *   the Matter + the two values the user picks (name, area of law). Replaces
+    *   createNextStepOpportunity(String), which blind-inserted a client-supplied
+    *   Opportunity JSON blob.
+    * @param matterId   AcctSeed__Project__c Id
+    * @param stepName   Opportunity Name (user-entered)
+    * @param areaOfLaw  Opportunity Area_of_Law__c (user-selected)
+    * @return Id of the created Opportunity
+    **/
+    @AuraEnabled
+    public static Id createNextStepOpportunityFromMatter(Id matterId, String stepName, String areaOfLaw) {
+        try {
+            AcctSeed__Project__c matter = [
+                SELECT Id, AcctSeed__Account__c, Spouse__c,
+                       AcctSeed__Opportunity__r.Kapsten_Matter__c
+                FROM AcctSeed__Project__c
+                WHERE Id = :matterId
+            ];
+
+            Id nextStepRtId = Schema.SObjectType.Opportunity
+                .getRecordTypeInfosByName().get('Next Step').getRecordTypeId();
+
+            Opportunity opp = new Opportunity(
+                AccountId        = matter.AcctSeed__Account__c,
+                Area_of_Law__c   = areaOfLaw,
+                CloseDate        = Date.today(),
+                Kapsten_Matter__c = matter.AcctSeed__Opportunity__r.Kapsten_Matter__c,
+                Name             = stepName,
+                Next_Step_Matter__c = matterId,
+                Pricebook2Id     = priceBookId,
+                RecordTypeId     = nextStepRtId,
+                Spouse__c        = matter.Spouse__c,
+                StageName        = 'Next Step Opportunity Submitted'
+            );
+
+            insert opp;
+            return opp.Id;
+        } catch (Exception e) {
+            System.debug('***Exception = ' + e.getMessage() + '\n' + e.getStackTraceString());
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
     /**
     * @description Gets Opportunity Information for Opp
     * @author Revolution Group (Brian Ezell) | 02-02-2021
@@ -466,5 +557,25 @@ public without sharing class NextStepController {
         public Boolean IsSelected;
         public Decimal Hours;
         public List<TaskTrackerTemplate> Children;
+    }
+
+    // Init payload for the Next Step LWC (Dex 2026-08-04).
+    public class NextStepInit {
+        public NextStepInit() {
+            areaOfLawOptions = new List<PicklistOption>();
+            productOptions = new List<PicklistOption>();
+        }
+        @AuraEnabled public List<PicklistOption> areaOfLawOptions;
+        @AuraEnabled public List<PicklistOption> productOptions;
+    }
+
+    // Generic {label, value} option for lightning-combobox / dual-listbox.
+    public class PicklistOption {
+        public PicklistOption(String label, String value) {
+            this.label = label;
+            this.value = value;
+        }
+        @AuraEnabled public String label;
+        @AuraEnabled public String value;
     }
 }

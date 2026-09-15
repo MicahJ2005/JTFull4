@@ -1,22 +1,25 @@
 /// Micah Johnson - Demand Chain 2025
 /// Inbound REST endpoint for Zoom Phone webhooks - the event-driven alternative to polling for
-/// recording/transcript readiness. Currently handles phone.recording_transcript_completed only;
-/// phone.recording_completed (the audio) is intentionally not wired up yet - re-uploading audio
-/// to an already-created VoiceCall needs its own upload URL, and it isn't yet confirmed whether
-/// Salesforce exposes a way to request one outside the original VoiceCall-creation response
-/// (see ZoomPhoneIntegration.buildTranscriptForRecording/sendCallMetadataToECI). Unhandled events
-/// are acknowledged (200) and ignored rather than rejected, per Zoom's guidance for a shared
-/// endpoint that isn't subscribed to every event type it might receive.
+/// recording/transcript readiness. Handles phone.recording_completed (creates the VoiceCall and
+/// uploads the audio, replacing the call-history poll as the primary path) and
+/// phone.recording_transcript_completed (attaches the transcript, usually finding the VoiceCall
+/// already there thanks to the former). Unhandled events are acknowledged (200) and ignored
+/// rather than rejected, per Zoom's guidance for a shared endpoint that isn't subscribed to every
+/// event type it might receive.
 ///
-/// NOTE: the payload.object field names below (id, call_id) are assumed to mirror the same shape
-/// already used by the polling /v2/phone/recordings endpoint elsewhere in this codebase (see
-/// ZoomPhoneIntegration.fetchRecordings). Confirm against a real captured delivery from Zoom
-/// before relying on this in production, and adjust the two lines in handlePost if they differ.
+/// payload.object.recordings is a list (confirmed against a real captured
+/// phone.recording_transcript_completed delivery) - each entry carries its own "id"/"call_id".
+/// phone.recording_completed is assumed to share the same recording-resource shape (see the note
+/// on ZoomPhoneIntegration.buildCallMapFromWebhookRecording) pending a real captured delivery to
+/// confirm. A single event has only ever been observed with one entry, but every one present is
+/// processed rather than assuming exactly one.
 @RestResource(urlMapping='/zoomPhoneWebhook/*')
 global with sharing class ZoomPhoneWebhookHandler {
 
+    private static final String EVENT_RECORDING_COMPLETED = 'phone.recording_completed';
+    private static final String EVENT_TRANSCRIPT_COMPLETED = 'phone.recording_transcript_completed';
     private static final Set<String> HANDLED_EVENTS = new Set<String>{
-        'phone.recording_transcript_completed'
+        EVENT_RECORDING_COMPLETED, EVENT_TRANSCRIPT_COMPLETED
     };
 
     @HttpPost
@@ -65,16 +68,59 @@ global with sharing class ZoomPhoneWebhookHandler {
 
         Map<String, Object> payloadInner = (Map<String, Object>) payload.get('payload');
         Map<String, Object> objectData = payloadInner != null ? (Map<String, Object>) payloadInner.get('object') : null;
-        String recordingId = objectData != null ? (String) objectData.get('id') : null;
-        String callId = objectData != null ? (String) objectData.get('call_id') : null;
+        List<Object> recordings = objectData != null ? (List<Object>) objectData.get('recordings') : null;
 
-        if (recordingId == null || callId == null) {
-            ZoomIntegrationErrorLogger.log('ZoomPhoneWebhookHandler', 'handlePost', null, callId,
-                new WebhookPayloadException('Missing payload.object.id/call_id for event ' + eventName));
+        if (eventName == EVENT_TRANSCRIPT_COMPLETED) {
+            enqueueTranscriptCompleted(recordings, eventName, rawBody);
+        } else if (eventName == EVENT_RECORDING_COMPLETED) {
+            enqueueRecordingCompleted(recordings, eventName, rawBody);
+        }
+    }
+
+    private static void enqueueTranscriptCompleted(List<Object> recordings, String eventName, String rawBody) {
+        List<ZoomPhoneWebhookQueueable.RecordingRef> refs = new List<ZoomPhoneWebhookQueueable.RecordingRef>();
+        if (recordings != null) {
+            for (Object recordingObj : recordings) {
+                Map<String, Object> recording = (Map<String, Object>) recordingObj;
+                String recordingId = (String) recording.get('id');
+                String callId = (String) recording.get('call_id');
+                if (recordingId != null && callId != null) {
+                    refs.add(new ZoomPhoneWebhookQueueable.RecordingRef(recordingId, callId));
+                }
+            }
+        }
+
+        if (refs.isEmpty()) {
+            // Includes the raw body so the actual payload shape Zoom sent is visible on the logged
+            // Zoom_Integration_Error__c record if this shape ever changes again.
+            ZoomIntegrationErrorLogger.log('ZoomPhoneWebhookHandler', 'handlePost', null, null,
+                new WebhookPayloadException('No usable payload.object.recordings[].id/call_id for event ' + eventName + '. Raw body: ' + rawBody));
             return;
         }
 
-        System.enqueueJob(new ZoomPhoneWebhookQueueable(recordingId, callId));
+        System.enqueueJob(new ZoomPhoneWebhookQueueable(refs, 0));
+    }
+
+    private static void enqueueRecordingCompleted(List<Object> recordings, String eventName, String rawBody) {
+        List<ZoomPhoneRecordingWebhookQueueable.RecordingCompletedRef> refs =
+            new List<ZoomPhoneRecordingWebhookQueueable.RecordingCompletedRef>();
+        if (recordings != null) {
+            for (Object recordingObj : recordings) {
+                Map<String, Object> recording = (Map<String, Object>) recordingObj;
+                String callId = (String) recording.get('call_id');
+                if (callId != null) {
+                    refs.add(new ZoomPhoneRecordingWebhookQueueable.RecordingCompletedRef(recording, callId));
+                }
+            }
+        }
+
+        if (refs.isEmpty()) {
+            ZoomIntegrationErrorLogger.log('ZoomPhoneWebhookHandler', 'handlePost', null, null,
+                new WebhookPayloadException('No usable payload.object.recordings[].call_id for event ' + eventName + '. Raw body: ' + rawBody));
+            return;
+        }
+
+        System.enqueueJob(new ZoomPhoneRecordingWebhookQueueable(refs, 0));
     }
 
     private static void handleUrlValidation(Map<String, Object> payload, RestResponse res) {

@@ -1,0 +1,421 @@
+<template>
+    <!-- Header -->
+    <div class="slds-card">
+        <div class="header-banner slds-p-around_medium">
+            <h2 class="header-title">
+                Related Parties: <span class="header-matter-name">{matterName}</span>
+            </h2>
+            <p class="header-counts">
+                <lightning-icon icon-name="utility:people" size="xx-small" class="slds-m-right_xx-small count-icon"></lightning-icon>
+                {totalCount} Total &bull; {peopleCount} People &bull; {professionalsCount} Professionals
+            </p>
+        </div>
+
+        <!-- Toolbar: pill tabs + Add -->
+        <div class="toolbar slds-p-around_medium slds-grid slds-wrap slds-grid_align-spread slds-grid_vertical-align-center">
+            <div class="tab-group" role="tablist">
+                <button type="button" class={peopleTabClass} onclick={handleSelectPeopleTab} role="tab" aria-selected={isPeopleTab}>
+                    <lightning-icon icon-name="utility:people" size="x-small" class="tab-icon"></lightning-icon>
+                    <span>People</span>
+                    <span class={peopleCountBadgeClass}>{peopleCount}</span>
+                </button>
+                <button type="button" class={professionalsTabClass} onclick={handleSelectProfessionalsTab} role="tab" aria-selected={isProfessionalsTab}>
+                    <lightning-icon icon-name="utility:groups" size="x-small" class="tab-icon"></lightning-icon>
+                    <span>Professionals</span>
+                    <span class={professionalsCountBadgeClass}>{professionalsCount}</span>
+                </button>
+            </div>
+            <lightning-button
+                variant="brand"
+                label="Add"
+                icon-name="utility:add"
+                onclick={handleAddClick}
+                class="add-button">
+            </lightning-button>
+        </div>
+
+        <!-- Shared search -->
+        <div class="slds-p-horizontal_medium slds-p-bottom_small">
+            <lightning-input
+                type="search"
+                placeholder={searchPlaceholder}
+                value={searchQuery}
+                onchange={handleSearchChange}>
+            </lightning-input>
+        </div>
+
+        <!-- People Tab -->
+        <template if:true={isPeopleTab}>
+                <!-- People Groups -->
+                <template if:true={hasPeopleResults}>
+                    <template for:each={filteredPeopleGroups} for:item="group">
+                        <div key={group.label} class="slds-p-horizontal_medium slds-p-top_medium">
+                            <div class="group-header slds-grid slds-grid_vertical-align-center slds-m-bottom_small">
+                                <h3 class="group-title slds-text-title_caps">{group.label}</h3>
+                                <span class="group-count slds-m-left_x-small">{group.count}</span>
+                                <span class="group-divider"></span>
+                            </div>
+                            <div class="card-grid">
+                                <template for:each={group.items} for:item="person">
+                                    <div key={person.id} class="party-card slds-box slds-p-around_small">
+                                        <div class="slds-grid slds-grid_vertical-align-start">
+                                            <!-- Avatar -->
+                                            <div class="avatar-circle slds-m-right_small">
+                                                <span class="avatar-initials">{person.initials}</span>
+                                            </div>
+                                            <!-- Content -->
+                                            <div class="card-content slds-grid slds-grid_vertical slds-has-flexi-truncate">
+                                                <p class="card-name slds-truncate">{person.name}</p>
+                                                <p class="card-relationship">{person.relationship}</p>
+                                                <div class="card-contact slds-m-top_xx-small">
+                                                    <template if:true={person.phone}>
+                                                        <span class="contact-link slds-m-right_small">
+                                                            <lightning-icon icon-name="utility:call" size="xx-small" class="contact-icon"></lightning-icon>
+                                                            <lightning-click-to-dial value={person.phone} record-id={person.contactId}></lightning-click-to-dial>
+                                                        </span>
+                                                    </template>
+                                                    <template if:true={person.email}>
+                                                        <a href={person.emailHref} class="contact-link">
+                                                            <lightning-icon icon-name="utility:email" size="xx-small" class="contact-icon"></lightning-icon>
+                                                            <span class="slds-truncate email-text">{person.email}</span>
+                                                        </a>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                            <!-- Actions -->
+                                            <div class="card-actions">
+                                                <lightning-button-icon
+                                                    icon-name="utility:delete"
+                                                    alternative-text="Remove"
+                                                    variant="bare"
+                                                    size="small"
+                                                    class="delete-icon"
+                                                    data-id={person.id}
+                                                    data-name={person.name}
+                                                    data-type="people"
+                                                    onclick={handleRemoveClick}>
+                                                </lightning-button-icon>
+                                                <a href={person.recordUrl} class="view-record-link slds-m-top_xx-small">
+                                                    View Record
+                                                    <lightning-icon icon-name="utility:new_window" size="xx-small" class="slds-m-left_xx-small"></lightning-icon>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+
+                <!-- Empty State -->
+                <template if:false={hasPeopleResults}>
+                    <div class="empty-state slds-p-around_large slds-align_absolute-center">
+                        <div class="slds-text-align_center">
+                            <lightning-icon icon-name="standard:person_account" size="large" class="slds-m-bottom_small"></lightning-icon>
+                            <h3 class="slds-text-heading_small">
+                                <template if:true={searchQuery}>No matches found</template>
+                                <template if:false={searchQuery}>No people yet</template>
+                            </h3>
+                            <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                <template if:true={searchQuery}>Try adjusting your search.</template>
+                                <template if:false={searchQuery}>Add the first person connected to this matter.</template>
+                            </p>
+                        </div>
+                    </div>
+                </template>
+        </template>
+
+        <!-- Professionals Tab -->
+        <template if:true={isProfessionalsTab}>
+                <!-- Professional Groups -->
+                <template if:true={hasProfessionalResults}>
+                    <template for:each={filteredProfessionalGroups} for:item="group">
+                        <div key={group.label} class="slds-p-horizontal_medium slds-p-top_medium">
+                            <div class="group-header slds-grid slds-grid_vertical-align-center slds-m-bottom_small">
+                                <h3 class="group-title slds-text-title_caps">{group.label}</h3>
+                                <span class="group-count slds-m-left_x-small">{group.count}</span>
+                                <span class="group-divider"></span>
+                            </div>
+                            <template for:each={group.items} for:item="prof">
+                                <div key={prof.id} class={prof.cardClass}>
+                                    <div class="slds-grid slds-grid_vertical-align-start">
+                                        <!-- Avatar -->
+                                        <div class={prof.avatarClass}>
+                                            <span class="avatar-initials">{prof.initials}</span>
+                                        </div>
+                                        <!-- Content -->
+                                        <div class="card-content slds-grid slds-grid_vertical slds-has-flexi-truncate">
+                                            <div class="slds-grid slds-grid_vertical-align-center">
+                                                <p class="card-name slds-truncate">{prof.name}</p>
+                                                <template if:true={prof.isDerived}>
+                                                    <span class="auto-linked-badge slds-m-left_x-small">
+                                                        <lightning-icon icon-name="utility:link" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                                                        Auto-linked
+                                                    </span>
+                                                </template>
+                                            </div>
+                                            <p class="card-relationship">{prof.displayRelationship}</p>
+                                            <template if:true={prof.organization}>
+                                                <p class="card-org slds-truncate">{prof.organizationDisplay}</p>
+                                            </template>
+                                            <div class="card-contact slds-m-top_xx-small">
+                                                <template if:true={prof.phone}>
+                                                    <span class="contact-link slds-m-right_small">
+                                                        <lightning-icon icon-name="utility:call" size="xx-small" class="contact-icon"></lightning-icon>
+                                                        <lightning-click-to-dial value={prof.phone} record-id={prof.contactId}></lightning-click-to-dial>
+                                                    </span>
+                                                </template>
+                                                <template if:true={prof.email}>
+                                                    <a href={prof.emailHref} class="contact-link">
+                                                        <lightning-icon icon-name="utility:email" size="xx-small" class="contact-icon"></lightning-icon>
+                                                        <span class="slds-truncate email-text">{prof.email}</span>
+                                                    </a>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <!-- Actions -->
+                                        <template if:false={prof.isDerived}>
+                                            <div class="card-actions">
+                                                <lightning-button-icon
+                                                    icon-name="utility:delete"
+                                                    alternative-text="Remove"
+                                                    variant="bare"
+                                                    size="small"
+                                                    class="delete-icon"
+                                                    data-id={prof.junctionId}
+                                                    data-name={prof.name}
+                                                    data-type="professional"
+                                                    data-assistant={prof.linkedAssistantName}
+                                                    onclick={handleRemoveClick}>
+                                                </lightning-button-icon>
+                                                <a href={prof.recordUrl} class="view-record-link slds-m-top_xx-small">
+                                                    View Record
+                                                    <lightning-icon icon-name="utility:new_window" size="xx-small" class="slds-m-left_xx-small"></lightning-icon>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </template>
+
+                <!-- Empty State -->
+                <template if:false={hasProfessionalResults}>
+                    <div class="empty-state slds-p-around_large slds-align_absolute-center">
+                        <div class="slds-text-align_center">
+                            <lightning-icon icon-name="utility:groups" size="large" class="slds-m-bottom_small"></lightning-icon>
+                            <h3 class="slds-text-heading_small">
+                                <template if:true={searchQuery}>No matches found</template>
+                                <template if:false={searchQuery}>No professionals yet</template>
+                            </h3>
+                            <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                <template if:true={searchQuery}>Try adjusting your search.</template>
+                                <template if:false={searchQuery}>Add the first professional connected to this matter.</template>
+                            </p>
+                        </div>
+                    </div>
+                </template>
+        </template>
+    </div>
+
+    <!-- Remove Confirmation Modal -->
+    <template if:true={showRemoveModal}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <h2 class="slds-text-heading_medium">Remove related party?</h2>
+                </header>
+                <div class="slds-modal__content slds-p-around_medium">
+                    <p>This will remove <strong>{removeTargetName}</strong> from this matter.</p>
+                    <template if:true={removeTargetAssistant}>
+                        <p class="slds-m-top_x-small">Removing this professional will also remove their linked assistant <strong>{removeTargetAssistant}</strong>.</p>
+                    </template>
+                    <p class="slds-m-top_x-small slds-text-color_weak">The underlying record will not be deleted.</p>
+                </div>
+                <footer class="slds-modal__footer">
+                    <lightning-button variant="neutral" label="Cancel" onclick={handleRemoveCancel}></lightning-button>
+                    <lightning-button variant="destructive" label="Remove" onclick={handleRemoveConfirm} class="slds-m-left_x-small"></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+
+    <!-- Add Party Modal -->
+    <template if:true={showAddModal}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header header-banner">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" onclick={handleAddCancel}>
+                        <lightning-icon icon-name="utility:close" size="small" variant="inverse"></lightning-icon>
+                    </button>
+                    <template if:true={addStepIsForm}>
+                        <lightning-button-icon
+                            icon-name="utility:back"
+                            variant="bare-inverse"
+                            alternative-text="Back"
+                            onclick={handleAddBack}
+                            class="slds-m-right_small">
+                        </lightning-button-icon>
+                    </template>
+                    <h2 class="slds-text-heading_medium header-title">
+                        <template if:false={addStepIsForm}>Add Related Party</template>
+                        <template if:true={addStepIsForm}>Add {addTypeLabel}</template>
+                    </h2>
+                    <p class="header-subtitle slds-m-top_xx-small">
+                        <template if:false={addStepIsForm}>Choose the type of party to add to this matter.</template>
+                        <template if:true={addStepIsForm}>Find an existing record or create a new one.</template>
+                    </p>
+                </header>
+                <div class="slds-modal__content slds-p-around_medium">
+                    <!-- Step 1: Choose Type -->
+                    <template if:false={addStepIsForm}>
+                        <div class="slds-grid slds-gutters_small">
+                            <div class="slds-col slds-size_1-of-2">
+                                <div class="type-card slds-box slds-p-around_medium" onclick={handleChoosePerson}>
+                                    <div class="type-icon-wrapper">
+                                        <lightning-icon icon-name="standard:person_account" size="medium"></lightning-icon>
+                                    </div>
+                                    <h3 class="slds-text-heading_small slds-m-top_small">Person</h3>
+                                    <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">Individual related to the matter such as a family member, witness, or opposing party.</p>
+                                </div>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2">
+                                <div class="type-card slds-box slds-p-around_medium" onclick={handleChooseProfessional}>
+                                    <div class="type-icon-wrapper">
+                                        <lightning-icon icon-name="utility:groups" size="medium"></lightning-icon>
+                                    </div>
+                                    <h3 class="slds-text-heading_small slds-m-top_small">Professional</h3>
+                                    <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">Professional involved in the matter such as an attorney, judge, or mediator.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Step 2: Find or Create -->
+                    <template if:true={addStepIsForm}>
+                        <lightning-tabset active-tab-value={addMode}>
+                            <lightning-tab label="Find Existing" value="find" onactive={handleAddModeFind}>
+                                <div class="slds-p-top_small">
+                                    <lightning-input
+                                        type="search"
+                                        placeholder={addSearchPlaceholder}
+                                        value={addSearchQuery}
+                                        onchange={handleAddSearchChange}>
+                                    </lightning-input>
+                                    <div class="lookup-results slds-m-top_small">
+                                        <template if:true={hasAddSearchResults}>
+                                            <template for:each={addSearchResults} for:item="rec">
+                                                <div key={rec.id}
+                                                     class={rec.selectedClass}
+                                                     data-id={rec.id}
+                                                     onclick={handleSelectExisting}>
+                                                    <div class="slds-grid slds-grid_vertical-align-center slds-grid_align-spread">
+                                                        <div>
+                                                            <p class="slds-text-body_regular">{rec.name}</p>
+                                                            <p class="slds-text-body_small slds-text-color_weak">{rec.subtitle}</p>
+                                                        </div>
+                                                        <template if:true={rec.isSelected}>
+                                                            <lightning-icon icon-name="utility:check" size="x-small" variant="success"></lightning-icon>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </template>
+                                        <template if:false={hasAddSearchResults}>
+                                            <p class="slds-text-align_center slds-text-color_weak slds-p-around_medium">No matching records</p>
+                                        </template>
+                                    </div>
+                                    <template if:true={addSelectedId}>
+                                        <div class="slds-m-top_small">
+                                            <lightning-combobox
+                                                label="Relationship to Matter"
+                                                placeholder="Select a relationship"
+                                                options={addRelationshipOptions}
+                                                value={addRelationship}
+                                                onchange={handleAddRelationshipChange}>
+                                            </lightning-combobox>
+                                        </div>
+                                    </template>
+                                </div>
+                            </lightning-tab>
+                            <lightning-tab label="Create New" value="create" onactive={handleAddModeCreate}>
+                                <div class="slds-p-top_small">
+                                    <div class="slds-grid slds-gutters_small slds-m-bottom_small">
+                                        <div class="slds-col slds-size_1-of-2">
+                                            <lightning-input label="First Name" value={addFirstName} onchange={handleAddFirstNameChange} required></lightning-input>
+                                        </div>
+                                        <div class="slds-col slds-size_1-of-2">
+                                            <lightning-input label="Last Name" value={addLastName} onchange={handleAddLastNameChange} required></lightning-input>
+                                        </div>
+                                    </div>
+                                    <template if:true={addIsProfessional}>
+                                        <div class="slds-form-element slds-m-bottom_small org-picker-wrapper">
+                                            <label class="slds-form-element__label" for="org-input">Account</label>
+                                            <div class="slds-form-element__control">
+                                                <lightning-input
+                                                    variant="label-hidden"
+                                                    label="Account"
+                                                    placeholder="Search accounts..."
+                                                    value={addOrganization}
+                                                    onchange={handleAddOrgChange}
+                                                    onblur={handleOrgInputBlur}>
+                                                </lightning-input>
+                                            </div>
+                                            <template if:true={showOrgResults}>
+                                                <div class="lookup-results org-lookup-results">
+                                                    <template if:true={hasOrgResults}>
+                                                        <template for:each={orgSearchResults} for:item="org">
+                                                            <div key={org.id}
+                                                                 class="lookup-item slds-p-around_small"
+                                                                 data-id={org.id}
+                                                                 data-name={org.name}
+                                                                 onmousedown={handleSelectOrg}>
+                                                                <p class="slds-text-body_regular">{org.name}</p>
+                                                            </div>
+                                                        </template>
+                                                    </template>
+                                                    <template if:false={hasOrgResults}>
+                                                        <div class="lookup-item slds-p-around_small no-org-match" data-id="" data-name={addOrganization} onmousedown={handleSelectOrg}>
+                                                            <p class="slds-text-body_regular">No matching accounts. Create "{addOrganization}"</p>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <div class="slds-grid slds-gutters_small slds-m-bottom_small">
+                                        <div class="slds-col slds-size_1-of-2">
+                                            <lightning-input label="Phone" type="tel" value={addPhone} onchange={handleAddPhoneChange}></lightning-input>
+                                        </div>
+                                        <div class="slds-col slds-size_1-of-2">
+                                            <lightning-input label="Email" type="email" value={addEmail} onchange={handleAddEmailChange}></lightning-input>
+                                        </div>
+                                    </div>
+                                    <lightning-combobox
+                                        label="Relationship to Matter"
+                                        placeholder="Select a relationship"
+                                        options={addRelationshipOptions}
+                                        value={addRelationship}
+                                        onchange={handleAddRelationshipChange}
+                                        required>
+                                    </lightning-combobox>
+                                </div>
+                            </lightning-tab>
+                        </lightning-tabset>
+                    </template>
+                </div>
+                <template if:true={addStepIsForm}>
+                    <footer class="slds-modal__footer">
+                        <lightning-button variant="neutral" label="Cancel" onclick={handleAddCancel}></lightning-button>
+                        <lightning-button variant="brand" label="Save" onclick={handleAddSave} class="slds-m-left_x-small"></lightning-button>
+                    </footer>
+                </template>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

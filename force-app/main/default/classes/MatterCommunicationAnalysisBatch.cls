@@ -260,14 +260,15 @@ global class MatterCommunicationAnalysisBatch
 
                 if (String.isNotBlank(analysisSection)) {
                     String existing = String.isBlank(matter.Communication_Analysis__c) ? '' : matter.Communication_Analysis__c;
-                    String merged   = mergeFactLines(existing, analysisSection);
+                    String merged   = mergeFactLines(existing, linkifyFactLines(analysisSection, assembled.refs));
                     if (merged.length() > 131000) merged = merged.left(131000);
                     matterUpdateMap.get(mId).Communication_Analysis__c = merged;
                 }
 
                 if (String.isNotBlank(logSection)) {
+                    String linkedLog   = linkifyLogSection(logSection, assembled.refs);
                     String existingLog = String.isBlank(matter.Communication_Log__c) ? '' : matter.Communication_Log__c;
-                    String newLog      = String.isBlank(existingLog) ? logSection : existingLog + '\n\n' + logSection;
+                    String newLog      = String.isBlank(existingLog) ? linkedLog : existingLog + '\n\n' + linkedLog;
                     if (newLog.length() > 131000) {
                         String trimmed = newLog.right(131000);
                         Integer firstNewline = trimmed.indexOf('\n');
@@ -278,7 +279,7 @@ global class MatterCommunicationAnalysisBatch
                     matterUpdateMap.get(mId).Log_Character_Count__c = newLog.length();
                 }
 
-                stampScalarFields(matterUpdateMap.get(mId), matter, rawResponse);
+                stampScalarFields(matterUpdateMap.get(mId), matter, rawResponse, assembled.refs);
                 matterUpdateMap.get(mId).Last_Summarized__c = DateTime.now();
 
                 List<String> historicalLogHeaders = extractLogHeaderLines(matter.Communication_Log__c);
@@ -408,6 +409,8 @@ global class MatterCommunicationAnalysisBatch
 
     private class AssemblyResult {
         String blocks = '';
+        // ordinal (as a string) → the communication record that block was built from
+        Map<String, BlockRef> refs = new Map<String, BlockRef>();
         List<Related_Email_Message__c>      emailsIncluded   = new List<Related_Email_Message__c>();
         List<Related_Call_Transcript__c>    callsIncluded    = new List<Related_Call_Transcript__c>();
         List<Related_Text_Message__c>       textsIncluded    = new List<Related_Text_Message__c>();
@@ -419,6 +422,11 @@ global class MatterCommunicationAnalysisBatch
     }
 
     // ── assembleCommunicationBlocks ───────────────────────────────────────────
+    // Each block header carries an ordinal ("Ref: 7"), never a record Id. result.refs maps
+    // that ordinal to the UNDERLYING communication record (EmailMessage / Call_Transcript__c
+    // / SMS_Session__c / Meeting_Transcript__c) so Apex, not the AI, writes every Id that
+    // reaches a field. Junctions are still what gets stamped AI_Reviewed__c — that is tracked
+    // through the *Included lists below and is unaffected by what the header shows.
     // Fills blocks up to MAX_CHARS with full records — no truncation of individual records.
     // Records with no content → emailsEmpty (stamped immediately, no AI cost).
     // Records that don't fit in this run's budget → left unreviewed, picked up next run.
@@ -436,6 +444,7 @@ global class MatterCommunicationAnalysisBatch
     ) {
         AssemblyResult result = new AssemblyResult();
         Integer charsUsed = 0;
+        Integer refSeq    = 0;
 
         Set<Id> seenEmailIds = new Set<Id>();
         for (Related_Email_Message__c j : emailJunctions) {
@@ -447,7 +456,10 @@ global class MatterCommunicationAnalysisBatch
             if (em == null || String.isBlank(em.TextBody)) { result.emailsEmpty.add(j); continue; }
             if (charsUsed + em.TextBody.length() > budget) continue;
             String direction = em.Incoming == true ? 'Inbound' : 'Outbound';
-            String block = '--- EMAIL | Id: ' + j.Id + ' | Date: ' + formatDateTime(em.CreatedDate) + ' | Direction: ' + direction + ' | From: ' + (String.isNotBlank(em.FromAddress) ? em.FromAddress : 'Unknown') + ' ---\n' + em.TextBody + '\n\n';
+            refSeq++;
+            String refKey = String.valueOf(refSeq);
+            result.refs.put(refKey, new BlockRef(em.Id, em.CreatedDate));
+            String block = '--- EMAIL | Ref: ' + refKey + ' | Date: ' + formatDateTime(em.CreatedDate) + ' | Direction: ' + direction + ' | From: ' + (String.isNotBlank(em.FromAddress) ? em.FromAddress : 'Unknown') + ' ---\n' + em.TextBody + '\n\n';
             result.blocks += block;
             charsUsed += block.length();
             result.emailsIncluded.add(j);
@@ -457,7 +469,10 @@ global class MatterCommunicationAnalysisBatch
             Call_Transcript__c ct = callTranscriptsById.get(j.Call_Transcript__c);
             if (ct == null || String.isBlank(ct.Transcript_Text__c)) { result.callsEmpty.add(j); continue; }
             if (charsUsed + ct.Transcript_Text__c.length() > budget) continue;
-            String block = '--- CALL TRANSCRIPT | Id: ' + j.Id + ' | Date: ' + formatDateTime(ct.CreatedDate) + ' ---\n' + ct.Transcript_Text__c + '\n\n';
+            refSeq++;
+            String refKey = String.valueOf(refSeq);
+            result.refs.put(refKey, new BlockRef(ct.Id, ct.CreatedDate));
+            String block = '--- CALL TRANSCRIPT | Ref: ' + refKey + ' | Date: ' + formatDateTime(ct.CreatedDate) + ' ---\n' + ct.Transcript_Text__c + '\n\n';
             result.blocks += block;
             charsUsed += block.length();
             result.callsIncluded.add(j);
@@ -467,7 +482,10 @@ global class MatterCommunicationAnalysisBatch
             SMS_Session__c sess = sessionsById.get(j.Text_Message_Session__c);
             if (sess == null || String.isBlank(sess.SMS_Session_Text__c)) { result.textsEmpty.add(j); continue; }
             if (charsUsed + sess.SMS_Session_Text__c.length() > budget) continue;
-            String block = '--- SMS SESSION | Id: ' + j.Id + ' | Date: ' + formatDateTime(sess.CreatedDate) + ' ---\n' + sess.SMS_Session_Text__c + '\n\n';
+            refSeq++;
+            String refKey = String.valueOf(refSeq);
+            result.refs.put(refKey, new BlockRef(sess.Id, sess.CreatedDate));
+            String block = '--- SMS SESSION | Ref: ' + refKey + ' | Date: ' + formatDateTime(sess.CreatedDate) + ' ---\n' + sess.SMS_Session_Text__c + '\n\n';
             result.blocks += block;
             charsUsed += block.length();
             result.textsIncluded.add(j);
@@ -477,7 +495,10 @@ global class MatterCommunicationAnalysisBatch
             Meeting_Transcript__c mt = meetingTranscriptsById.get(j.Meeting_Transcript__c);
             if (mt == null || String.isBlank(mt.Transcript__c)) { result.meetingsEmpty.add(j); continue; }
             if (charsUsed + mt.Transcript__c.length() > budget) continue;
-            String block = '--- MEETING TRANSCRIPT | Id: ' + j.Id + ' | Date: ' + formatDateTime(mt.CreatedDate) + ' ---\n' + mt.Transcript__c + '\n\n';
+            refSeq++;
+            String refKey = String.valueOf(refSeq);
+            result.refs.put(refKey, new BlockRef(mt.Id, mt.CreatedDate));
+            String block = '--- MEETING TRANSCRIPT | Ref: ' + refKey + ' | Date: ' + formatDateTime(mt.CreatedDate) + ' ---\n' + mt.Transcript__c + '\n\n';
             result.blocks += block;
             charsUsed += block.length();
             result.meetingsIncluded.add(j);
@@ -513,6 +534,9 @@ global class MatterCommunicationAnalysisBatch
         if (String.isBlank(newFacts))  return existing;
 
         Map<String, List<String>> sectionMap   = new Map<String, List<String>>();
+        // Dedupe keys are the markup-stripped form of each fact line, so a stored line that
+        // already carries record hyperlinks still matches the plain line the AI returns.
+        Map<String, Set<String>>  sectionKeys  = new Map<String, Set<String>>();
         List<String>              sectionOrder = new List<String>();
         String currentSection = null;
 
@@ -522,10 +546,12 @@ global class MatterCommunicationAnalysisBatch
                 currentSection = trimmed;
                 if (!sectionMap.containsKey(currentSection)) {
                     sectionMap.put(currentSection, new List<String>());
+                    sectionKeys.put(currentSection, new Set<String>());
                     sectionOrder.add(currentSection);
                 }
             } else if (currentSection != null && String.isNotBlank(trimmed) && !trimmed.startsWith('<')) {
                 sectionMap.get(currentSection).add(trimmed);
+                sectionKeys.get(currentSection).add(stripTags(trimmed));
             }
         }
 
@@ -536,11 +562,14 @@ global class MatterCommunicationAnalysisBatch
                 currentSection = trimmed;
                 if (!sectionMap.containsKey(currentSection)) {
                     sectionMap.put(currentSection, new List<String>());
+                    sectionKeys.put(currentSection, new Set<String>());
                     sectionOrder.add(currentSection);
                 }
             } else if (currentSection != null && String.isNotBlank(trimmed) && !trimmed.startsWith('<')) {
-                if (!sectionMap.get(currentSection).contains(trimmed)) {
+                String key = stripTags(trimmed);
+                if (!sectionKeys.get(currentSection).contains(key)) {
                     sectionMap.get(currentSection).add(trimmed);
+                    sectionKeys.get(currentSection).add(key);
                 }
             }
         }
@@ -554,6 +583,236 @@ global class MatterCommunicationAnalysisBatch
             result += '\n\n';
         }
         return result.trim();
+    }
+
+    // ── Block references ──────────────────────────────────────────────────────
+    // The AI is never shown a record Id. Each transcript block is labelled with a small
+    // ordinal ("Ref: 7") and the AI echoes that ordinal back. Apex holds the ordinal →
+    // record map and substitutes the real Id afterwards, so a malformed, fabricated or
+    // mis-transcribed Id cannot reach the output: every Id written comes from this map.
+    //
+    // The one error left available to the AI is naming the wrong ordinal. That is caught
+    // by comparing the entry's own timestamp against the referenced block's date — see
+    // resolveLogRef.
+
+    public class BlockRef {
+        public Id       recordId;
+        public DateTime blockDate;
+        public BlockRef(Id recordId, DateTime blockDate) {
+            this.recordId  = recordId;
+            this.blockDate = blockDate;
+        }
+    }
+
+    // Entry timestamps are rounded to the minute and drift by seconds, so a block within two
+    // minutes is the same communication. The window has to stay tight: replies inside one
+    // email thread land three or four minutes apart, and a wide window makes them
+    // indistinguishable.
+    private static final Long REF_MATCH_TOLERANCE_MS = 120L * 1000L;
+
+    // Pulls the ordinal out of whatever the AI wrote — "7", "Ref: 7", "[7]" all resolve.
+    @TestVisible
+    private static Id resolveRef(String rawValue, Map<String, BlockRef> refs) {
+        if (String.isBlank(rawValue) || refs == null || refs.isEmpty()) return null;
+        String digits = rawValue.trim().replaceAll('[^0-9]', '');
+        if (String.isBlank(digits)) return null;
+        BlockRef br = refs.get(digits);
+        return br == null ? null : br.recordId;
+    }
+
+    // Resolves a log entry's ref, then sanity-checks it against the entry's timestamp.
+    // If the referenced block is far from the timestamp AND exactly one other block sits
+    // within tolerance, the AI named the wrong ordinal and the closer block wins.
+    // Ambiguous or unmatched cases keep the AI's choice — only positive evidence overrides.
+    @TestVisible
+    private static Id resolveLogRef(String rawValue, String rawTimestamp, Map<String, BlockRef> refs) {
+        if (refs == null || refs.isEmpty()) return null;
+
+        String   digits = String.isBlank(rawValue) ? '' : rawValue.trim().replaceAll('[^0-9]', '');
+        BlockRef cited  = String.isBlank(digits) ? null : refs.get(digits);
+        DateTime stamp  = parseLogTimestamp(rawTimestamp);
+
+        if (stamp == null) return cited == null ? null : cited.recordId;
+
+        if (cited != null && cited.blockDate != null
+            && Math.abs(stamp.getTime() - cited.blockDate.getTime()) <= REF_MATCH_TOLERANCE_MS) {
+            return cited.recordId;   // cited block matches the timestamp — trust it
+        }
+
+        // Find the closest block and the runner-up. Overriding needs the closest to be inside
+        // the window AND the runner-up to be outside it — otherwise two blocks both explain
+        // the timestamp (same-second sends) and only the AI can tell them apart.
+        BlockRef nearest    = null;
+        Long     bestDist   = null;
+        Long     secondDist = null;
+        for (BlockRef br : refs.values()) {
+            if (br.blockDate == null) continue;
+            Long dist = Math.abs(stamp.getTime() - br.blockDate.getTime());
+            if (bestDist == null || dist < bestDist) {
+                secondDist = bestDist;
+                bestDist   = dist;
+                nearest    = br;
+            } else if (secondDist == null || dist < secondDist) {
+                secondDist = dist;
+            }
+        }
+
+        if (nearest != null && bestDist <= REF_MATCH_TOLERANCE_MS
+            && (secondDist == null || secondDist > REF_MATCH_TOLERANCE_MS)) {
+            return nearest.recordId;
+        }
+        return cited == null ? null : cited.recordId;
+    }
+
+    @TestVisible
+    private static DateTime parseLogTimestamp(String ts) {
+        if (String.isBlank(ts)) return null;
+        String v = ts.trim();
+        if (v.length() < 16) return null;
+        try {
+            return DateTime.newInstanceGmt(
+                Integer.valueOf(v.substring(0, 4)),
+                Integer.valueOf(v.substring(5, 7)),
+                Integer.valueOf(v.substring(8, 10)),
+                Integer.valueOf(v.substring(11, 13)),
+                Integer.valueOf(v.substring(14, 16)),
+                0);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ── Communication record linking ──────────────────────────────────────────
+    // Each block header hands the AI the Id of the underlying communication record
+    // (EmailMessage / Call_Transcript__c / SMS_Session__c / Meeting_Transcript__c) and
+    // the AI echoes it back in log lines, fact lines and promise lines. What comes back
+    // cannot be trusted: the model has been observed returning label text ("View Record"),
+    // the Matter Id, and fabricated placeholder Ids. These helpers accept only Ids that
+    // actually resolve to a communication object in this org, and link only those.
+
+    private static final Set<String> LINKABLE_COMM_OBJECTS = new Set<String>{
+        'EmailMessage',
+        'Call_Transcript__c',
+        'SMS_Session__c',
+        'Meeting_Transcript__c',
+        // Junction Ids — still accepted so entries written before this change keep linking.
+        'Related_Email_Message__c',
+        'Related_Call_Transcript__c',
+        'Related_Text_Message__c',
+        'Related_Meeting_Transcript__c'
+    };
+
+    // Key prefixes are assigned per org, so prefix → object name is resolved at runtime
+    // and cached for the life of the transaction.
+    private static Map<String, String> objectNameByPrefix = new Map<String, String>();
+
+    // Returns the Lightning URL for a genuine communication record Id, or null when the
+    // value is not an Id, does not resolve in this org, or points at some other object.
+    @TestVisible
+    private static String commRecordUrl(String rawValue) {
+        if (String.isBlank(rawValue)) return null;
+        String candidate = rawValue.trim();
+        if (candidate.length() != 15 && candidate.length() != 18) return null;
+        if (!Pattern.matches('[a-zA-Z0-9]+', candidate)) return null;
+
+        String objName;
+        try {
+            Id recId  = Id.valueOf(candidate);
+            candidate = String.valueOf(recId);          // normalise 15-char Ids to 18
+            String pfx = candidate.substring(0, 3);
+            if (!objectNameByPrefix.containsKey(pfx)) {
+                Schema.SObjectType t = recId.getSObjectType();
+                objectNameByPrefix.put(pfx, t == null ? null : t.getDescribe().getName());
+            }
+            objName = objectNameByPrefix.get(pfx);
+        } catch (Exception e) {
+            return null;   // malformed Id, or a checksum the AI mangled
+        }
+
+        if (objName == null || !LINKABLE_COMM_OBJECTS.contains(objName)) return null;
+        return '/lightning/r/' + objName + '/' + candidate + '/view';
+    }
+
+    // ── linkifyLogSection ─────────────────────────────────────────────────────
+    // Log header lines are pipe-delimited with the record Id in the last field. Only that
+    // field is rewritten, so the 11-field layout and the tone value at index 7 that
+    // extractLogHeaderLines / getToneFromHeader rely on are untouched. Idempotent: an
+    // already-linked field no longer looks like an Id, so it is left alone.
+
+    @TestVisible
+    private static String linkifyLogSection(String logSection) {
+        return linkifyLogSection(logSection, null);
+    }
+
+    @TestVisible
+    private static String linkifyLogSection(String logSection, Map<String, BlockRef> refs) {
+        if (String.isBlank(logSection)) return logSection;
+        List<String> out = new List<String>();
+        for (String line : logSection.split('\n')) {
+            List<String> parts = line.split('\\|', -1);
+            if (parts.size() >= 11) {
+                String last  = parts[parts.size() - 1];
+                Id     recId = resolveLogRef(last, parts[0], refs);
+                String url   = recId != null ? commRecordUrl(String.valueOf(recId))
+                                             : commRecordUrl(last);
+                String label = recId != null ? String.valueOf(recId) : last.trim();
+                if (url != null) {
+                    parts[parts.size() - 1] = '<a href="' + url + '">' + label + '</a>';
+                    out.add(String.join(parts, '|'));
+                    continue;
+                }
+            }
+            out.add(line);
+        }
+        return String.join(out, '\n');
+    }
+
+    // ── linkifyFactLines ──────────────────────────────────────────────────────
+    // Fact lines are "type|status|text|id[,id...]" — the last field holds one or more
+    // comma-separated source Ids. Section headers such as [Custody] contain no pipes and
+    // pass through untouched.
+
+    @TestVisible
+    private static String linkifyFactLines(String factSection) {
+        return linkifyFactLines(factSection, null);
+    }
+
+    @TestVisible
+    private static String linkifyFactLines(String factSection, Map<String, BlockRef> refs) {
+        if (String.isBlank(factSection)) return factSection;
+        List<String> out = new List<String>();
+        for (String line : factSection.split('\n')) {
+            List<String> parts = line.split('\\|', -1);
+            if (parts.size() >= 4) {
+                List<String> rendered  = new List<String>();
+                Boolean      linkedAny = false;
+                for (String token : parts[parts.size() - 1].split(',')) {
+                    Id     ref = resolveRef(token, refs);
+                    String url = ref != null ? commRecordUrl(String.valueOf(ref)) : commRecordUrl(token);
+                    if (ref != null) token = String.valueOf(ref);
+                    if (url != null) {
+                        rendered.add('<a href="' + url + '">' + token.trim() + '</a>');
+                        linkedAny = true;
+                    } else {
+                        rendered.add(token.trim());
+                    }
+                }
+                if (linkedAny) {
+                    parts[parts.size() - 1] = String.join(rendered, ',');
+                    out.add(String.join(parts, '|'));
+                    continue;
+                }
+            }
+            out.add(line);
+        }
+        return String.join(out, '\n');
+    }
+
+    // Strips markup so stored (linked) fact lines compare equal to freshly returned
+    // (unlinked) ones during merge deduplication.
+    @TestVisible
+    private static String stripTags(String html) {
+        return String.isBlank(html) ? '' : html.replaceAll('<[^>]+>', '').trim();
     }
 
     // ── formatDateTime ────────────────────────────────────────────────────────
@@ -605,6 +864,11 @@ global class MatterCommunicationAnalysisBatch
 
     @TestVisible
     private static void stampScalarFields(AcctSeed__Project__c mUpdate, AcctSeed__Project__c matter, String rawResponse) {
+        stampScalarFields(mUpdate, matter, rawResponse, null);
+    }
+
+    @TestVisible
+    private static void stampScalarFields(AcctSeed__Project__c mUpdate, AcctSeed__Project__c matter, String rawResponse, Map<String, BlockRef> refs) {
         String lastSubVal    = extractScalarValue(rawResponse, 'LAST_SUBSTANTIVE_CONVERSATION');
         String lastInbVal    = extractScalarValue(rawResponse, 'LAST_CLIENT_INBOUND');
         String lastAttyVal   = extractScalarValue(rawResponse, 'LAST_ATTORNEY_CLIENT_CONVERSATION');
@@ -659,7 +923,7 @@ global class MatterCommunicationAnalysisBatch
             } else {
                 String html = '';
                 for (String line : openPromisesVal.split('\n')) {
-                    if (String.isNotBlank(line.trim())) html += formatPromiseHtml(line.trim());
+                    if (String.isNotBlank(line.trim())) html += formatPromiseHtml(line.trim(), refs);
                 }
                 mUpdate.Open_Promises__c = html.left(32768);
             }
@@ -668,7 +932,7 @@ global class MatterCommunicationAnalysisBatch
             String existing = String.isBlank(matter.Completed_Promises__c) ? '' : matter.Completed_Promises__c;
             String newHtml = '';
             for (String line : completedPromisesVal.split('\n')) {
-                if (String.isNotBlank(line.trim())) newHtml += formatPromiseHtml(line.trim());
+                if (String.isNotBlank(line.trim())) newHtml += formatPromiseHtml(line.trim(), refs);
             }
             mUpdate.Completed_Promises__c = (existing + newHtml).left(32768);
         }
@@ -676,19 +940,25 @@ global class MatterCommunicationAnalysisBatch
             String existing = String.isBlank(matter.Broken_Promises__c) ? '' : matter.Broken_Promises__c;
             String newHtml = '';
             for (String line : brokenPromisesVal.split('\n')) {
-                if (String.isNotBlank(line.trim())) newHtml += formatPromiseHtml(line.trim());
+                if (String.isNotBlank(line.trim())) newHtml += formatPromiseHtml(line.trim(), refs);
             }
             mUpdate.Broken_Promises__c = (existing + newHtml).left(32768);
         }
     }
 
     // ── formatPromiseHtml ─────────────────────────────────────────────────────
-    // Converts a pipe-delimited promise line from the AI into an HTML paragraph
-    // with a hyperlink to the referenced Salesforce communication record.
+    // Converts a pipe-delimited promise line from the AI into an HTML paragraph, with a
+    // hyperlink to the referenced Salesforce communication record when — and only when —
+    // the Id the AI supplied resolves to a real communication record.
     // Format: date|party|description|due_date|recordId
 
     @TestVisible
     private static String formatPromiseHtml(String pipeLine) {
+        return formatPromiseHtml(pipeLine, null);
+    }
+
+    @TestVisible
+    private static String formatPromiseHtml(String pipeLine, Map<String, BlockRef> refs) {
         if (String.isBlank(pipeLine)) return '';
         List<String> parts      = pipeLine.split('\\|', -1);
         String promiseDate  = parts.size() > 0 ? parts[0].trim() : '';
@@ -699,7 +969,18 @@ global class MatterCommunicationAnalysisBatch
 
         String line = promiseDate + ' | <strong>' + party + '</strong> | ' + description;
         if (String.isNotBlank(dueDate) && dueDate != 'NONE') line += ' | Due: ' + dueDate;
-        if (String.isNotBlank(recordId)) line += ' | <a href="/' + recordId + '">View Record</a>';
+
+        Id     promiseRef = resolveRef(recordId, refs);
+        if (promiseRef != null) recordId = String.valueOf(promiseRef);
+        String recordUrl  = commRecordUrl(recordId);
+        if (recordUrl != null) {
+            line += ' | <a href="' + recordUrl + '">View Record</a>';
+        } else if (String.isNotBlank(recordId)) {
+            // Not a communication record Id. Observed values include label text
+            // ("Related Call Transcript", "View Record"), the Matter Id, and fabricated
+            // placeholders. Keep the promise, drop the dead link.
+            line += ' | (source record not identified)';
+        }
         return '<p>' + line + '</p>';
     }
 
@@ -892,7 +1173,7 @@ global class MatterCommunicationAnalysisBatch
 
     private static String invokePromptTemplate(String matterId, String communicationBlocks) {
         ConnectApi.WrappedValue matterIdVal = new ConnectApi.WrappedValue();
-        matterIdVal.value = matterId;
+        matterIdVal.value = new Map<String, Object>{ 'id' => matterId };
 
         ConnectApi.WrappedValue blocksVal = new ConnectApi.WrappedValue();
         blocksVal.value = communicationBlocks;

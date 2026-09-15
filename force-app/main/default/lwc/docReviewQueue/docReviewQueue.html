@@ -1,0 +1,69 @@
+<template>
+    <lightning-card title="Document Review Queue" icon-name="standard:document">
+        <span slot="actions" class="slds-text-body_small slds-text-color_weak">{buildTag}</span>
+
+        <div class="slds-p-horizontal_medium">
+            <template lwc:if={isEmpty}>
+                <div class="slds-align_absolute-center slds-p-vertical_large slds-text-color_weak">
+                    No documents awaiting review. 🎉
+                </div>
+            </template>
+
+            <template for:each={groups} for:item="css">
+                <div key={css.key} class="slds-box slds-box_xx-small slds-m-bottom_small">
+                    <!-- CSS group header -->
+                    <div class="slds-text-heading_small slds-p-around_x-small slds-theme_shade">
+                        <lightning-icon icon-name="standard:user" size="x-small"
+                            class="slds-m-right_x-small"></lightning-icon>
+                        {css.cssName}
+                        <lightning-badge label={css.docCount} class="slds-m-left_x-small"></lightning-badge>
+                    </div>
+
+                    <!-- Matters under this CSS -->
+                    <template for:each={css.matters} for:item="matter">
+                        <div key={matter.key} class="slds-p-left_medium slds-p-top_x-small">
+                            <div class="slds-text-title_caps slds-text-color_weak slds-p-vertical_xx-small">
+                                {matter.matterName}
+                            </div>
+
+                            <!-- Docs (oldest first) -->
+                            <template for:each={matter.docs} for:item="doc">
+                                <div key={doc.documentId}
+                                    class="slds-grid slds-grid_align-spread slds-p-around_x-small slds-border_bottom">
+                                    <div class="slds-col slds-size_7-of-12">
+                                        <div class="slds-text-body_regular slds-truncate" title={doc.fileName}>
+                                            <lightning-icon icon-name="doctype:pdf" size="x-small"
+                                                class="slds-m-right_x-small"></lightning-icon>
+                                            {doc.fileName}
+                                        </div>
+                                        <div class="slds-text-body_small slds-text-color_weak">
+                                            {doc.documentType} &middot;
+                                            <span class="slds-text-color_error">{doc.holdReason}</span>
+                                            &middot; &rarr; {doc.targetFolder}
+                                        </div>
+                                    </div>
+                                    <div class="slds-col slds-size_2-of-12 slds-align-middle slds-text-align_center">
+                                        <lightning-badge label={doc.ageDays}></lightning-badge>
+                                        <span class="slds-text-body_small slds-text-color_weak"> days</span>
+                                    </div>
+                                    <div class="slds-col slds-size_3-of-12 slds-text-align_right">
+                                        <lightning-button-group>
+                                            <lightning-button label="Approve & File" variant="brand"
+                                                data-docid={doc.documentId}
+                                                data-folder={doc.targetFolder}
+                                                data-dtype={doc.documentType}
+                                                onclick={handleApprove}></lightning-button>
+                                            <lightning-button label="Reject" variant="destructive-text"
+                                                data-docid={doc.documentId}
+                                                onclick={handleReject}></lightning-button>
+                                        </lightning-button-group>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

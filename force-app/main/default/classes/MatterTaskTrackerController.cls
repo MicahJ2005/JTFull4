@@ -124,6 +124,12 @@ public with sharing class MatterTaskTrackerController {
         allCaseIds.addAll(rootIds); // include top-level cases so tasks on them are fetched
 
         // 3. Tasks (WhatId = Case.Id)
+        // ALL ROWS is required. Salesforce archives a Task once it is closed AND its due date is
+        // more than 365 days old (or, with no due date, it was created more than 365 days ago).
+        // Archived tasks are invisible to standard SOQL, so without this a long-running tracker
+        // renders "0 / 0 tasks complete" even though the work exists and was finished. Because
+        // only CLOSED tasks archive, the omission removed exactly the completed work.
+        // IsDeleted = false is paired with it because ALL ROWS also returns recycle-bin records.
         List<Task> taskRecords = [
             SELECT Id, Subject, Status, ActivityDate, WIP_Est_Due_Date__c,
                    OwnerId, Owner.Name,
@@ -133,10 +139,13 @@ public with sharing class MatterTaskTrackerController {
                    Task_Tracker_Template_Step__r.Instructions__c
             FROM Task
             WHERE WhatId IN :allCaseIds
+              AND IsDeleted = false
             ORDER BY Order__c NULLS LAST, Subject
+            ALL ROWS
         ];
 
         // 4. Events (WhatId = Case.Id) — treated as deadline lines in the swimlane
+        // Events archive as well: any Event whose end date is more than 365 days old.
         List<Event> eventRecords = [
             SELECT Id, Subject, ActivityDate, OwnerId, Owner.Name,
                    Is_Completed__c, Order__c, Hours__c, WhatId,
@@ -144,7 +153,9 @@ public with sharing class MatterTaskTrackerController {
                    Task_Tracker_Template_Step__r.Instructions__c
             FROM Event
             WHERE WhatId IN :allCaseIds
+              AND IsDeleted = false
             ORDER BY Order__c NULLS LAST, Subject
+            ALL ROWS
         ];
 
         // 5. Build Workflow → Phase maps

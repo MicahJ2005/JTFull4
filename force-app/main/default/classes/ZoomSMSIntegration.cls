@@ -1,4 +1,13 @@
-public with sharing class ZoomSMSIntegration implements Schedulable{
+// without sharing: getRelatedPersonAccountByPhoneNumber/getRelatedLeadByPhoneNumber/
+// getRelatedUsersByPhoneNumber are also called from ZoomPhoneIntegration's webhook-triggered
+// transcript building, which runs as the guest user (ZoomPhoneWebhookHandler's REST context).
+// Sharing enforcement follows the class where the SOQL is written, not the caller, so leaving
+// this "with sharing" meant Account/Lead matches for external callers silently returned nothing
+// under guest execution (Person Accounts are typically Private OWD, unlike User records which
+// are commonly Public Read Only) even when a real matching record existed - internal Salesforce
+// User matching happened to keep working only because that logic lives in ZoomPhoneIntegration
+// (already without sharing), not because it's the same in this class.
+public without sharing class ZoomSMSIntegration implements Schedulable{
     private static final String BASE_URL = 'https://api.zoom.us/v2/';
 
     public void execute(SchedulableContext ctx) {
@@ -427,10 +436,18 @@ public with sharing class ZoomSMSIntegration implements Schedulable{
         if (phone == null) {
             return null;
         }
-    
+
         // Remove all non-digit characters
         String digits = phone.replaceAll('[^0-9]', '');
         system.debug('digits: '+ digits);
+
+        // If the stored number already includes the country code (e.g. "1-6128670420" stored
+        // directly in the field, rather than the more common 10-digit form), stripping
+        // non-digits already leaves the correct 11-digit result - prepending another "1"
+        // unconditionally produced a 12-digit key that could never match a real lookup value.
+        if (digits.length() == 11 && digits.startsWith('1')) {
+            return digits;
+        }
         return '1'+digits;
     }
 

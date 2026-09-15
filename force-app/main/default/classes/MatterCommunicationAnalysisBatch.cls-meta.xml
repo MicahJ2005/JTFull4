@@ -3,7 +3,7 @@
     <apiVersion>66.0</apiVersion>
     <packageVersions>
         <majorNumber>3</majorNumber>
-        <minorNumber>362</minorNumber>
+        <minorNumber>392</minorNumber>
         <namespace>AcctSeed</namespace>
     </packageVersions>
     <status>Active</status>

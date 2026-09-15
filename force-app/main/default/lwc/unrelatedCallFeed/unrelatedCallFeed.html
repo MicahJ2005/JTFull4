@@ -1,0 +1,319 @@
+<template>
+    <lightning-card title="My Unrelated Calls" icon-name="standard:call">
+        <div slot="actions">
+            <lightning-button
+                label="Refresh"
+                icon-name="utility:refresh"
+                onclick={handleRefresh}
+            ></lightning-button>
+        </div>
+
+        <div class="slds-p-horizontal_medium slds-p-top_small slds-p-bottom_small toolbar-row slds-grid slds-wrap slds-grid_vertical-align-center">
+            <template if:true={isViewAsEligible}>
+                <div class="slds-m-right_small slds-m-bottom_x-small view-as-search">
+                    <lightning-input
+                        type="search"
+                        variant="label-hidden"
+                        placeholder="View as user (admin)…"
+                        value={viewAsSearchTerm}
+                        onchange={handleViewAsSearchChange}
+                    ></lightning-input>
+                    <template if:true={viewAsShowResults}>
+                        <ul class="slds-listbox slds-listbox_vertical slds-box slds-box_x-small view-as-results">
+                            <template for:each={viewAsOptions} for:item="opt">
+                                <li
+                                    key={opt.id}
+                                    class="slds-listbox__item lookup-result"
+                                    data-user-id={opt.id}
+                                    data-user-name={opt.name}
+                                    onmousedown={handlePickViewAsUser}
+                                >
+                                    <div class="slds-p-around_x-small slds-truncate">{opt.name}</div>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+            </template>
+            <div class="slds-m-right_small slds-m-bottom_x-small days-back-select">
+                <lightning-combobox
+                    variant="label-hidden"
+                    value={daysBack}
+                    options={daysBackOptions}
+                    onchange={handleDaysBackChange}
+                ></lightning-combobox>
+            </div>
+            <template if:true={isCustomDateSelected}>
+                <div class="slds-m-right_small slds-m-bottom_x-small custom-date-input">
+                    <lightning-input
+                        type="date"
+                        variant="label-hidden"
+                        value={customSinceDate}
+                        onchange={handleCustomDateChange}
+                    ></lightning-input>
+                </div>
+            </template>
+            <lightning-button-group class="slds-m-bottom_x-small">
+                <lightning-button
+                    label="Active"
+                    variant={activeViewVariant}
+                    onclick={handleShowActive}
+                ></lightning-button>
+                <lightning-button
+                    label="Dismissed"
+                    variant={dismissedViewVariant}
+                    onclick={handleShowDismissed}
+                ></lightning-button>
+            </lightning-button-group>
+        </div>
+
+        <template if:true={isViewingAsOther}>
+            <div class="slds-p-horizontal_medium slds-p-top_small">
+                <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_warning" role="alert">
+                    Viewing {viewAsUserName}'s calls (admin preview).
+                    <a href="#" onclick={handleClearViewAs} class="slds-m-left_small">Back to my calls</a>
+                </div>
+            </div>
+        </template>
+
+        <template if:true={alreadyLinkedMessage}>
+            <div class="slds-p-horizontal_medium slds-p-top_small">
+                <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_info" role="status">
+                    {alreadyLinkedMessage}
+                </div>
+            </div>
+        </template>
+
+        <div class="slds-p-horizontal_medium slds-p-bottom_small">
+            <template if:true={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="small"></lightning-spinner>
+            </template>
+
+            <template if:true={loadError}>
+                <div class="slds-text-color_error slds-p-vertical_small">
+                    Couldn't load calls: {loadError}
+                </div>
+            </template>
+
+            <template if:false={hasCalls}>
+                <template if:false={isLoading}>
+                    <template if:true={isCustomDateSelected}>
+                        <template if:false={customSinceDate}>
+                            <p class="slds-text-color_weak slds-p-vertical_small">
+                                Pick a date above to see calls since then.
+                            </p>
+                        </template>
+                    </template>
+                    <template if:false={isCustomDateSelected}>
+                        <p class="slds-text-color_weak slds-p-vertical_small">
+                            {emptyStateMessage}
+                        </p>
+                    </template>
+                </template>
+            </template>
+
+            <template for:each={calls} for:item="call">
+                <div key={call.id} class="slds-box slds-box_x-small slds-m-bottom_x-small">
+                    <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                        <div>
+                            <div class="slds-grid slds-grid_vertical-align-center">
+                                <template if:true={call.hasCallTranscript}>
+                                    <p class="slds-text-heading_small slds-m-right_x-small">
+                                        <a
+                                            href="#"
+                                            data-ct-id={call.callTranscriptId}
+                                            onclick={handleOpenCallTranscript}
+                                        >{call.callTranscriptName}</a>
+                                    </p>
+                                </template>
+                                <template if:false={call.hasCallTranscript}>
+                                    <p class="slds-text-heading_small slds-m-right_x-small">
+                                        {call.callTranscriptName}
+                                    </p>
+                                </template>
+                            </div>
+
+                            <template if:true={call.hasVoiceCall}>
+                                <p class="slds-text-body_small">
+                                    <a
+                                        href="#"
+                                        data-vc-id={call.voiceCallId}
+                                        onclick={handleOpenVoiceCall}
+                                    >View Voice Call</a>
+                                </p>
+                            </template>
+
+                            <p class="slds-text-body_regular">
+                                <template if:true={call.hasOtherPartyName}>
+                                    <span class="call-highlight">{call.otherPartyName}</span>
+                                    <template if:true={call.hasOtherPartyPhone}>
+                                        <span class="slds-text-color_weak">({call.otherPartyPhone})</span>
+                                    </template>
+                                </template>
+                                <template if:false={call.hasOtherPartyName}>
+                                    <template if:true={call.hasOtherPartyPhone}>
+                                        <span class="slds-text-color_weak">{call.otherPartyPhone}</span>
+                                    </template>
+                                </template>
+                            </p>
+
+                            <p class="slds-text-body_regular">
+                                <template if:true={call.hasCallStart}>
+                                    <span class="call-highlight">{call.callDateDisplay}</span>
+                                    <span class="slds-text-color_weak">&nbsp;{call.callTimeDisplay}</span>
+                                </template>
+                                <template if:true={call.hasDuration}>
+                                    <span class="slds-text-color_weak">&nbsp;·&nbsp;{call.durationDisplay}</span>
+                                </template>
+                            </p>
+
+                            <template if:true={call.hasOtherRelation}>
+                                <p class="slds-text-body_small slds-text-color_weak">
+                                    Also touches: {call.otherRelationLabel}
+                                </p>
+                            </template>
+                            <template if:true={call.isDismissed}>
+                                <p class="slds-text-body_small slds-text-color_weak">
+                                    {call.dismissedInfo}
+                                </p>
+                            </template>
+                        </div>
+                        <div class="slds-grid slds-grid_vertical-align-center">
+                            <template if:true={call.isDismissed}>
+                                <lightning-button
+                                    label="Restore"
+                                    variant="neutral"
+                                    data-id={call.id}
+                                    onclick={handleRestore}
+                                ></lightning-button>
+                            </template>
+                            <template if:false={call.isDismissed}>
+                                <template if:false={call.isEditing}>
+                                    <lightning-button
+                                        label="Dismiss"
+                                        variant="neutral"
+                                        class="slds-m-right_x-small"
+                                        data-id={call.id}
+                                        onclick={handleDismiss}
+                                    ></lightning-button>
+                                    <lightning-button
+                                        label={call.relateButtonLabel}
+                                        variant="brand"
+                                        data-id={call.id}
+                                        onclick={handleStartRelate}
+                                    ></lightning-button>
+                                </template>
+                                <template if:true={call.isEditing}>
+                                    <div class="slds-grid slds-grid_vertical-align-center">
+                                        <lightning-input
+                                            type="search"
+                                            label="Matter"
+                                            variant="label-hidden"
+                                            placeholder="Search matters…"
+                                            data-id={call.id}
+                                            value={call.matterSearchTerm}
+                                            onchange={handleMatterSearchChange}
+                                            class="slds-m-right_x-small matter-search-input"
+                                        ></lightning-input>
+                                        <lightning-button
+                                            label="Cancel"
+                                            data-id={call.id}
+                                            onclick={handleCancelRelate}
+                                        ></lightning-button>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+
+                    <template if:true={call.isEditing}>
+                        <template if:true={call.isLoadingSuggestions}>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
+                                Checking for likely matters…
+                            </p>
+                        </template>
+                        <template if:true={call.showSuggestions}>
+                            <div class="slds-m-top_x-small">
+                                <span class="slds-text-body_small slds-text-color_weak">Suggested (click to stage, then confirm below):</span>
+                                <template for:each={call.suggestedMatters} for:item="suggestion">
+                                    <template if:true={suggestion.isSelected}>
+                                        <lightning-button
+                                            key={suggestion.id}
+                                            label={suggestion.name}
+                                            variant="brand"
+                                            class="slds-m-left_x-small slds-m-bottom_x-small"
+                                            data-call-id={call.id}
+                                            data-matter-id={suggestion.id}
+                                            data-matter-name={suggestion.name}
+                                            onclick={handlePickSuggestedMatter}
+                                        ></lightning-button>
+                                    </template>
+                                    <template if:false={suggestion.isSelected}>
+                                        <lightning-button
+                                            key={suggestion.id}
+                                            label={suggestion.name}
+                                            variant="neutral"
+                                            class="slds-m-left_x-small slds-m-bottom_x-small"
+                                            data-call-id={call.id}
+                                            data-matter-id={suggestion.id}
+                                            data-matter-name={suggestion.name}
+                                            onclick={handlePickSuggestedMatter}
+                                        ></lightning-button>
+                                    </template>
+                                </template>
+                            </div>
+                        </template>
+                        <template if:true={call.showResults}>
+                            <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small slds-m-bottom_xx-small">
+                                Click to confirm:
+                            </p>
+                            <ul class="slds-listbox slds-listbox_vertical slds-box slds-box_x-small">
+                                <template for:each={call.matterOptions} for:item="opt">
+                                    <li
+                                        key={opt.id}
+                                        class="slds-listbox__item lookup-result confirm-match"
+                                        data-call-id={call.id}
+                                        data-matter-id={opt.id}
+                                        data-matter-name={opt.name}
+                                        onmousedown={handlePickMatter}
+                                    >
+                                        <div class="slds-p-around_x-small slds-truncate">
+                                            {opt.name}
+                                        </div>
+                                    </li>
+                                </template>
+                                <template if:true={call.noResults}>
+                                    <li class="slds-p-around_x-small slds-text-color_weak">
+                                        No matching matters.
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                    </template>
+                </div>
+            </template>
+
+            <template if:true={hasCalls}>
+                <div class="slds-grid slds-grid_align-center slds-grid_vertical-align-center slds-p-top_small pagination-row">
+                    <lightning-button-icon
+                        icon-name="utility:chevronleft"
+                        alternative-text="Previous page"
+                        title="Previous page"
+                        disabled={isFirstPage}
+                        onclick={handlePreviousPage}
+                        class="slds-m-right_small"
+                    ></lightning-button-icon>
+                    <span class="slds-text-body_small slds-text-color_weak">{pageLabel}</span>
+                    <lightning-button-icon
+                        icon-name="utility:chevronright"
+                        alternative-text="Next page"
+                        title="Next page"
+                        disabled={isLastPage}
+                        onclick={handleNextPage}
+                        class="slds-m-left_small"
+                    ></lightning-button-icon>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

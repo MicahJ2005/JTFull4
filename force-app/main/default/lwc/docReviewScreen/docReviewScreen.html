@@ -1,0 +1,77 @@
+<template>
+    <lightning-card title="Review Document" icon-name="standard:document_reference">
+        <span slot="actions" class="slds-text-body_small slds-text-color_weak">{buildTag}</span>
+
+        <template lwc:if={doc}>
+            <div class="slds-grid slds-gutters slds-p-horizontal_small slds-wrap">
+
+                <!-- LEFT: the redacted PDF -->
+                <div class="slds-col slds-size_1-of-1 slds-large-size_7-of-12">
+                    <div class="slds-box slds-box_x-small slds-p-none" style="height: 640px;">
+                        <template lwc:if={doc.boxFileUrl}>
+                            <iframe src={pdfPreviewUrl} title="Redacted document preview"
+                                width="100%" height="100%" style="border:0;"></iframe>
+                        </template>
+                        <template lwc:else>
+                            <div class="slds-align_absolute-center slds-text-color_weak"
+                                style="height:100%;">
+                                PDF preview unavailable (scaffold — real Box preview URL pending)
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- RIGHT: review panel -->
+                <div class="slds-col slds-size_1-of-1 slds-large-size_5-of-12">
+                    <!-- Hold reason, prominent -->
+                    <div class="slds-box slds-box_x-small slds-theme_warning slds-m-bottom_small">
+                        <div class="slds-text-title_caps">Hold reason</div>
+                        <div class="slds-text-body_regular">{doc.holdReason}</div>
+                    </div>
+
+                    <!-- Read-only context -->
+                    <dl class="slds-list_horizontal slds-wrap slds-m-bottom_small">
+                        <dt class="slds-item_label slds-text-color_weak slds-size_5-of-12">File</dt>
+                        <dd class="slds-item_detail slds-size_7-of-12 slds-truncate" title={doc.fileName}>{doc.fileName}</dd>
+                        <dt class="slds-item_label slds-text-color_weak slds-size_5-of-12">Matter</dt>
+                        <dd class="slds-item_detail slds-size_7-of-12">{doc.matterName}</dd>
+                        <dt class="slds-item_label slds-text-color_weak slds-size_5-of-12">CSS</dt>
+                        <dd class="slds-item_detail slds-size_7-of-12">{doc.cssName}</dd>
+                        <dt class="slds-item_label slds-text-color_weak slds-size_5-of-12">Redaction</dt>
+                        <dd class="slds-item_detail slds-size_7-of-12">{doc.redactionDecision}</dd>
+                    </dl>
+
+                    <!-- EDITABLE metadata (feeds naming/routing on approve) -->
+                    <lightning-input label="Document Type" value={editType}
+                        onchange={handleTypeChange} class="slds-m-bottom_x-small"></lightning-input>
+                    <lightning-input label="Target Folder" value={editFolder}
+                        onchange={handleFolderChange} class="slds-m-bottom_small"
+                        field-level-help="Where the redacted file will be filed on approval."></lightning-input>
+
+                    <template lwc:if={metadataChanged}>
+                        <div class="slds-text-body_small slds-text-color_success slds-m-bottom_x-small">
+                            ✎ Metadata edited — will be saved on Approve.
+                        </div>
+                    </template>
+
+                    <!-- Actions -->
+                    <div class="slds-grid slds-grid_align-spread slds-m-top_medium">
+                        <lightning-button label="Approve & File" variant="brand"
+                            onclick={handleApprove} disabled={saving}></lightning-button>
+                        <lightning-button label="Reject" variant="destructive"
+                            onclick={handleReject} disabled={saving}></lightning-button>
+                    </div>
+                    <template lwc:if={saving}>
+                        <lightning-spinner alternative-text="Saving" size="small"></lightning-spinner>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <template lwc:else>
+            <div class="slds-align_absolute-center slds-p-vertical_large slds-text-color_weak">
+                Select a document to review.
+            </div>
+        </template>
+    </lightning-card>
+</template>

@@ -74,6 +74,22 @@ private class ZoomIntegrationErrorLoggerTest {
     }
 
     @isTest
+    static void testLogSkipsDuplicatePendingRetryForSameRecordingAndCall() {
+        // Zoom can redeliver the same webhook event, which would otherwise call log() again for
+        // a recording/call that already has a pending retry - that used to create a second,
+        // independent Zoom_Integration_Error__c record instead of just letting the existing one's
+        // own retry cycle continue, inflating the apparent number of distinct stuck calls.
+        CalloutException stillProcessing = new CalloutException('Error fetching transcript: {"code":12002,"message":"This recording is still in the process of being transcribed. Reopen this recording in a few minutes."}');
+
+        Test.startTest();
+        ZoomIntegrationErrorLogger.log('SomeClass', 'someMethod', null, 'meeting1', stillProcessing, 'rec123', '0Aa000000000001');
+        ZoomIntegrationErrorLogger.log('SomeClass', 'someMethod', null, 'meeting1', stillProcessing, 'rec123', '0Aa000000000001');
+        Test.stopTest();
+
+        System.assertEquals(1, [SELECT COUNT() FROM Zoom_Integration_Error__c], 'A redelivered event for the same recording/call should not create a duplicate pending retry');
+    }
+
+    @isTest
     static void testLogMarksZoomCannotTranscribeAsResolved() {
         Test.startTest();
         ZoomIntegrationErrorLogger.log('SomeClass', 'someMethod', null, 'meeting2',

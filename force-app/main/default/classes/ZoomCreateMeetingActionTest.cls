@@ -1,315 +1,365 @@
 @IsTest
 private class ZoomCreateMeetingActionTest {
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // MOCK — HAPPY PATH (1 token + N meetings)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private class SuccessMock implements HttpCalloutMock {
-        private Integer callCount = 0;
-
-        public HttpResponse respond(HttpRequest req) {
-            callCount++;
-            HttpResponse res = new HttpResponse();
-            res.setHeader('Content-Type', 'application/json');
-
-            // Callout 1 siempre es el token OAuth
-            if (callCount == 1) {
-                res.setStatusCode(200);
-                res.setBody('{"access_token":"fake_token_abc123"}');
-            } else {
-                // Callouts 2+ son las meetings
-                res.setStatusCode(201);
-                res.setBody('{"join_url":"https://zoom.us/j/123456789","id":123456789}');
-            }
-
-            return res;
-        }
-    }
+    private static final String TOKEN_BODY = '{"access_token":"test_token_abc123","token_type":"bearer"}';
 
     // ─────────────────────────────────────────────────────────────────────────
-    // MOCK — TOKEN FAILURE
+    // HELPERS
     // ─────────────────────────────────────────────────────────────────────────
 
-    private class TokenFailMock implements HttpCalloutMock {
-        public HttpResponse respond(HttpRequest req) {
-            HttpResponse res = new HttpResponse();
-            res.setStatusCode(401);
-            res.setHeader('Content-Type', 'application/json');
-            res.setBody('{"error":"invalid_client"}');
-            return res;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // MOCK — MEETING API FAILURE (token OK + meeting falla)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private class MeetingFailMock implements HttpCalloutMock {
-        private Integer callCount = 0;
-
-        public HttpResponse respond(HttpRequest req) {
-            callCount++;
-            HttpResponse res = new HttpResponse();
-            res.setHeader('Content-Type', 'application/json');
-
-            if (callCount == 1) {
-                res.setStatusCode(200);
-                res.setBody('{"access_token":"fake_token_abc123"}');
-            } else {
-                res.setStatusCode(400);
-                res.setBody('{"code":300,"message":"Invalid parameter."}');
-            }
-
-            return res;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // MOCK — NO JOIN_URL (token OK + meeting 201 pero sin join_url)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private class NoUrlMock implements HttpCalloutMock {
-        private Integer callCount = 0;
-
-        public HttpResponse respond(HttpRequest req) {
-            callCount++;
-            HttpResponse res = new HttpResponse();
-            res.setHeader('Content-Type', 'application/json');
-
-            if (callCount == 1) {
-                res.setStatusCode(200);
-                res.setBody('{"access_token":"fake_token_abc123"}');
-            } else {
-                res.setStatusCode(201);
-                res.setBody('{"id":123456789}'); // sin join_url
-            }
-
-            return res;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // HELPER — inyectar ZoomConfig__mdt fake
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static void injectConfig() {
-        ZoomCreateMeetingAction.testConfig = new ZoomConfig__mdt(
-            AccountId__c    = 'fake_account_id',
-            ClientId__c     = 'fake_client_id',
-            ClientSecret__c = 'fake_client_secret'
+    private static ZoomConfig__mdt config(String defaultUserId) {
+        return new ZoomConfig__mdt(
+            AccountId__c     = 'test_account_id',
+            ClientId__c      = 'test_client_id',
+            ClientSecret__c  = 'test_client_secret',
+            DefaultUserId__c = defaultUserId
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 1 — Happy path: devuelve joinUrl y success = true
-    // ─────────────────────────────────────────────────────────────────────────
+    private static ZoomCreateMeetingAction.ActionRequest req(String topic) {
+        ZoomCreateMeetingAction.ActionRequest r = new ZoomCreateMeetingAction.ActionRequest();
+        r.topic = topic;
+        return r;
+    }
 
-    @IsTest
-    static void testCreateMeeting_Success() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new SuccessMock());
+    private static List<ZoomCreateMeetingAction.ActionRequest> one(
+            ZoomCreateMeetingAction.ActionRequest r) {
+        return new List<ZoomCreateMeetingAction.ActionRequest>{ r };
+    }
 
-        ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-        req.topic    = 'Consultation - Johnson Turner Legal';
-        req.duration = 45;
-
-        Test.startTest();
-        List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>{ req }
-            );
-        Test.stopTest();
-
-        Assert.areEqual(1, results.size(), 'Debe retornar exactamente un resultado');
-        Assert.isTrue(results[0].success, 'success debe ser true');
-        Assert.areEqual('https://zoom.us/j/123456789', results[0].joinUrl, 'joinUrl debe coincidir');
-        Assert.isNull(results[0].errorMessage, 'errorMessage debe ser null en happy path');
+    private static String meetingBody() {
+        return JSON.serialize(new Map<String, Object>{
+            'id'         => 123456789,
+            'join_url'   => 'https://zoom.us/j/123456789',
+            'host_id'    => 'hostZoomId0000000000AA',
+            'host_email' => 'kristi@johnsonturner.com'
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TEST 2 — Duration por defecto: si no se pasa, usa 30 minutos
+    // MOCK — routes by endpoint so an extra user lookup does not shift responses
     // ─────────────────────────────────────────────────────────────────────────
 
-    @IsTest
-    static void testCreateMeeting_DefaultDuration() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new SuccessMock());
+    private class ZoomMock implements HttpCalloutMock {
+        Integer meetingStatus;
+        String  meetingBody;
+        public Integer userLookupStatus = 200;
+        public Integer tokenStatus      = 200;
+        public String  lastMeetingEndpoint;
+        public String  lastMeetingBody;
 
-        ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-        req.topic = 'Meeting sin duration';
-
-        Test.startTest();
-        List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>{ req }
-            );
-        Test.stopTest();
-
-        Assert.areEqual(1, results.size());
-        Assert.isTrue(results[0].success, 'Debe ser exitoso aunque no se pase duration');
-        Assert.isNotNull(results[0].joinUrl, 'joinUrl no debe ser null');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 3 — Bulk: 1 token + 3 meetings
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @IsTest
-    static void testCreateMeeting_Bulk() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new SuccessMock());
-
-        List<ZoomCreateMeetingAction.ActionRequest> reqs =
-            new List<ZoomCreateMeetingAction.ActionRequest>();
-
-        for (Integer i = 0; i < 3; i++) {
-            ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-            req.topic    = 'Meeting ' + i;
-            req.duration = 30;
-            reqs.add(req);
+        ZoomMock(Integer meetingStatus, String meetingBody) {
+            this.meetingStatus = meetingStatus;
+            this.meetingBody   = meetingBody;
         }
 
+        public HTTPResponse respond(HTTPRequest req) {
+            HttpResponse res = new HttpResponse();
+            res.setHeader('Content-Type', 'application/json');
+            String ep = req.getEndpoint();
+
+            if (ep.contains('oauth/token')) {
+                res.setStatusCode(tokenStatus);
+                res.setBody(tokenStatus == 200 ? TOKEN_BODY : '{"reason":"bad creds"}');
+                return res;
+            }
+            if (ep.endsWith('/meetings')) {
+                lastMeetingEndpoint = ep;
+                lastMeetingBody     = req.getBody();
+                res.setStatusCode(meetingStatus);
+                res.setBody(meetingBody);
+                return res;
+            }
+            res.setStatusCode(userLookupStatus);
+            res.setBody(userLookupStatus == 200
+                ? '{"id":"lookedUpZoomId1234567","email":"found@x.com","type":2}'
+                : '{"code":1001,"message":"User does not exist"}');
+            return res;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // HAPPY PATH
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @IsTest
+    static void createsMeetingUnderResolvedHostNotMe() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'kristi@johnsonturner.com', Zoom_User_Id__c = 'kristiZoomId000000AAA');
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        Test.setMock(HttpCalloutMock.class, mock);
+
         Test.startTest();
         List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(reqs);
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
         Test.stopTest();
 
-        // SuccessMock: callout 1 = token, callouts 2-4 = meetings
-        Assert.areEqual(3, results.size(), 'Debe retornar un resultado por cada request');
+        System.assertEquals(1, results.size());
+        System.assertEquals(true, results[0].success,
+            'Expected success. errorMessage was: ' + results[0].errorMessage);
+        System.assertEquals('https://zoom.us/j/123456789', results[0].joinUrl);
+        System.assertEquals('hostZoomId0000000000AA', results[0].hostId, 'host_id must be captured');
+        System.assertEquals('kristi@johnsonturner.com', results[0].hostEmail, 'host_email must be captured');
+
+        System.assert(mock.lastMeetingEndpoint.contains('kristiZoomId000000AAA'),
+            'Meeting must be created under the resolved host. Was: ' + mock.lastMeetingEndpoint);
+        System.assert(!mock.lastMeetingEndpoint.contains('/users/me/'),
+            'Endpoint must never target "me".');
+        System.assert(!mock.lastMeetingBody.contains('alternative_hosts'),
+            'No other users should be added to the meeting.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // EMAIL FALLBACK
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @IsTest
+    static void resolvesZoomIdByEmailWhenFieldBlank() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'kelly.hurley@johnsonturner.com', Zoom_User_Id__c = null);
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
+        Test.stopTest();
+
+        System.assertEquals(true, results[0].success,
+            'Expected success. errorMessage was: ' + results[0].errorMessage);
+        System.assert(mock.lastMeetingEndpoint.contains('lookedUpZoomId1234567'),
+            'A blank Zoom Id must be resolved by email lookup. Was: ' + mock.lastMeetingEndpoint);
+    }
+
+    @IsTest
+    static void failsWhenEmailLookupFinsNothing() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'nobody@johnsonturner.com', Zoom_User_Id__c = null);
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        mock.userLookupStatus = 404;
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success);
+        System.assertEquals(null, mock.lastMeetingEndpoint,
+            'No meeting may be created when the host cannot be resolved.');
+        System.assert(
+            [SELECT COUNT() FROM Zoom_Integration_Error__c WHERE Apex_Class__c = 'ZoomCreateMeetingAction'] > 0,
+            'A failed lookup must be logged, not swallowed.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // NEVER "me"
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @IsTest
+    static void unresolvableHostFailsRatherThanUsingMe() {
+        ZoomCreateMeetingAction.testConfig = config(null);
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'Must fail when no host resolves.');
+        System.assertNotEquals(null, results[0].errorMessage);
+        System.assertEquals(null, mock.lastMeetingEndpoint,
+            'No meeting may be created when no host can be resolved.');
+    }
+
+    @IsTest
+    static void groupIdIsNotTreatedAsAHost() {
+        // A queue Id in the default host slot must be skipped, not sent to Zoom.
+        ZoomCreateMeetingAction.testConfig = config('00G5w0000049t2oEAA');
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success, 'A group cannot host a Zoom meeting.');
+        System.assertEquals(null, mock.lastMeetingEndpoint);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PAYLOAD
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @IsTest
+    static void joinExperienceLetsAttendeesInWithoutTheHost() {
+        Map<String, Object> payload = ZoomCreateMeetingAction.buildZoomPayload('Consult', 30, null);
+        Map<String, Object> settings = (Map<String, Object>) payload.get('settings');
+
+        System.assertEquals(true,  settings.get('join_before_host'),
+            'Attendees must not be stuck on a wait screen.');
+        System.assertEquals(false, settings.get('waiting_room'),
+            'Waiting room and join before host are mutually exclusive in Zoom.');
+        System.assertEquals(0, settings.get('jbh_time'));
+    }
+
+    @IsTest
+    static void preservesUniqueMeetingType() {
+        Map<String, Object> payload = ZoomCreateMeetingAction.buildZoomPayload('Consult', 45, null);
+        System.assertEquals(3,  payload.get('type'), 'Per consult unique meeting type must not change.');
+        System.assertEquals(45, payload.get('duration'));
+    }
+
+    @IsTest
+    static void defaultsDurationWhenNotSupplied() {
+        Map<String, Object> payload = ZoomCreateMeetingAction.buildZoomPayload('Consult', 30, null);
+        System.assertEquals(30, payload.get('duration'));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FAILURE PATHS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @IsTest
+    static void tokenFailureReportsEveryRequest() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'a@b.com', Zoom_User_Id__c = 'zoomId000000000000AAA');
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        mock.tokenStatus = 401;
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(new List<ZoomCreateMeetingAction.ActionRequest>{
+                req('One'), req('Two')
+            });
+        Test.stopTest();
+
+        System.assertEquals(2, results.size(), 'Every request must get a result.');
         for (ZoomCreateMeetingAction.ActionResult r : results) {
-            Assert.isTrue(r.success, 'Todos deben ser exitosos');
-            Assert.isNotNull(r.joinUrl, 'joinUrl no debe ser null');
+            System.assertEquals(false, r.success);
+            System.assert(r.errorMessage.contains('Could not connect to Zoom'), r.errorMessage);
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 4 — Lista vacía: retorna lista vacía sin hacer callouts
-    // ─────────────────────────────────────────────────────────────────────────
-
     @IsTest
-    static void testCreateMeeting_EmptyList() {
-        Test.startTest();
-        List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>()
-            );
-        Test.stopTest();
+    static void meetingApiErrorIsReportedAndLogged() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'a@b.com', Zoom_User_Id__c = 'zoomId000000000000AAA');
 
-        Assert.areEqual(0, results.size(), 'Lista vacía debe retornar lista vacía');
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 5 — Topic en blanco: success = false, sin hacer callout a Zoom
-    // ─────────────────────────────────────────────────────────────────────────
-
-    @IsTest
-    static void testCreateMeeting_BlankTopic() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new SuccessMock());
-
-        ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-        req.topic = '';
+        Test.setMock(HttpCalloutMock.class,
+            new ZoomMock(400, '{"code":300,"message":"Invalid request body."}'));
 
         Test.startTest();
         List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>{ req }
-            );
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
         Test.stopTest();
 
-        Assert.areEqual(1, results.size());
-        Assert.isFalse(results[0].success, 'success debe ser false con topic vacío');
-        Assert.isTrue(
-            results[0].errorMessage.contains('Meeting Topic is required'),
-            'errorMessage debe indicar que el topic es requerido'
-        );
+        System.assertEquals(false, results[0].success);
+        System.assert(results[0].errorMessage.contains('400'), results[0].errorMessage);
+        System.assertEquals(1,
+            [SELECT COUNT() FROM Zoom_Integration_Error__c WHERE Apex_Class__c = 'ZoomCreateMeetingAction'],
+            'API failures must be written to the error log, not swallowed.');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 6 — Token falla: todos los requests quedan como failed
-    // ─────────────────────────────────────────────────────────────────────────
-
     @IsTest
-    static void testCreateMeeting_TokenFailure() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new TokenFailMock());
+    static void missingJoinUrlIsTreatedAsFailure() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'a@b.com', Zoom_User_Id__c = 'zoomId000000000000AAA');
 
-        List<ZoomCreateMeetingAction.ActionRequest> reqs =
-            new List<ZoomCreateMeetingAction.ActionRequest>();
-
-        for (Integer i = 0; i < 2; i++) {
-            ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-            req.topic = 'Meeting ' + i;
-            reqs.add(req);
-        }
+        Test.setMock(HttpCalloutMock.class, new ZoomMock(201, '{"id":999}'));
 
         Test.startTest();
         List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(reqs);
+            ZoomCreateMeetingAction.createMeeting(one(req('Consult')));
         Test.stopTest();
 
-        Assert.areEqual(2, results.size(), 'Debe retornar un resultado por cada request');
-        for (ZoomCreateMeetingAction.ActionResult r : results) {
-            Assert.isFalse(r.success, 'Todos deben ser false si el token falla');
-            Assert.isTrue(
-                r.errorMessage.contains('Failed to obtain Zoom access token'),
-                'errorMessage debe indicar fallo en el token'
-            );
-        }
+        System.assertEquals(false, results[0].success);
+        System.assert(results[0].errorMessage.contains('no join_url'), results[0].errorMessage);
+    }
+
+    @IsTest
+    static void blankTopicIsRejected() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'a@b.com', Zoom_User_Id__c = 'zoomId000000000000AAA');
+        Test.setMock(HttpCalloutMock.class, new ZoomMock(201, meetingBody()));
+
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(one(req('')));
+        Test.stopTest();
+
+        System.assertEquals(false, results[0].success);
+        System.assert(results[0].errorMessage.contains('Meeting Topic is required'), results[0].errorMessage);
+    }
+
+    @IsTest
+    static void emptyRequestListReturnsEmpty() {
+        Test.startTest();
+        List<ZoomCreateMeetingAction.ActionResult> results =
+            ZoomCreateMeetingAction.createMeeting(new List<ZoomCreateMeetingAction.ActionRequest>());
+        Test.stopTest();
+        System.assertEquals(0, results.size());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TEST 7 — Meeting API devuelve 400: success = false
+    // ALTERNATIVE HOSTS — the assigned CES must be able to start the meeting
     // ─────────────────────────────────────────────────────────────────────────
 
     @IsTest
-    static void testCreateMeeting_MeetingApiFailure() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new MeetingFailMock());
+    static void poolMembersBecomeAlternativeHosts() {
+        ZoomCreateMeetingAction.testConfig   = config(null);
+        ZoomCreateMeetingAction.testHostUser =
+            new User(Email = 'chris@johnsonturner.com', Zoom_User_Id__c = 'chrisZoomId00000000AA');
+        ZoomCreateMeetingAction.testAlternativeHosts =
+            'kristi@johnsonturner.com;denise@johnsonturner.com;anne@johnsonturner.com;kelly.hurley@johnsonturner.com';
 
-        ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-        req.topic = 'Test Meeting';
+        ZoomCreateMeetingAction.ActionRequest r = req('Consult');
+        r.hostPoolGroupId = '00G5w0000049t2oEAA';
+
+        ZoomMock mock = new ZoomMock(201, meetingBody());
+        Test.setMock(HttpCalloutMock.class, mock);
 
         Test.startTest();
         List<ZoomCreateMeetingAction.ActionResult> results =
             ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>{ req }
-            );
+                new List<ZoomCreateMeetingAction.ActionRequest>{ r });
         Test.stopTest();
 
-        Assert.areEqual(1, results.size());
-        Assert.isFalse(results[0].success, 'success debe ser false con error 400');
-        Assert.isTrue(
-            results[0].errorMessage.contains('Zoom API error 400'),
-            'errorMessage debe indicar el error 400'
-        );
+        System.assertEquals(true, results[0].success,
+            'Expected success. errorMessage was: ' + results[0].errorMessage);
+        System.assert(mock.lastMeetingBody.contains('alternative_hosts'),
+            'Pool members must be alternative hosts so the assigned CES can start the meeting.');
+        System.assert(mock.lastMeetingBody.contains('kristi@johnsonturner.com'),
+            'Every pool member must be able to start it.');
+        System.assert(mock.lastMeetingBody.contains('kelly.hurley@johnsonturner.com'),
+            'Every pool member must be able to start it.');
+        System.assert(mock.lastMeetingBody.contains('"alternative_hosts_email_notification":false'),
+            'Pool members must not be emailed about meetings they were not assigned.');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // TEST 8 — Meeting responde 201 pero sin join_url: success = false
-    // ─────────────────────────────────────────────────────────────────────────
-
     @IsTest
-    static void testCreateMeeting_NoJoinUrl() {
-        injectConfig();
-        Test.setMock(HttpCalloutMock.class, new NoUrlMock());
-
-        ZoomCreateMeetingAction.ActionRequest req = new ZoomCreateMeetingAction.ActionRequest();
-        req.topic = 'Test Meeting';
-
-        Test.startTest();
-        List<ZoomCreateMeetingAction.ActionResult> results =
-            ZoomCreateMeetingAction.createMeeting(
-                new List<ZoomCreateMeetingAction.ActionRequest>{ req }
-            );
-        Test.stopTest();
-
-        Assert.areEqual(1, results.size());
-        Assert.isFalse(results[0].success, 'success debe ser false si no viene join_url');
-        Assert.isTrue(
-            results[0].errorMessage.contains('no join_url was returned'),
-            'errorMessage debe indicar ausencia de join_url'
-        );
+    static void noPoolMeansNoAlternativeHosts() {
+        System.assertEquals(null,
+            ZoomCreateMeetingAction.resolveAlternativeHosts(null, null),
+            'No group means no alternative hosts.');
+        System.assertEquals(null,
+            ZoomCreateMeetingAction.resolveAlternativeHosts('005000000000001', null),
+            'A user Id is not a group and must not be queried as one.');
     }
 }

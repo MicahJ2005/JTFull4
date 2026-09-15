@@ -68,12 +68,14 @@ public without sharing class NextStepControllerLWC {
                 }
             }
 
-            // Product choices — Product2 with a Task Tracker Template, value = the
+            // Product choices — ACTIVE Product2 with a Task Tracker Template, value = the
             // template Id (mirrors the flow's ProductChoices: display Name, value Task_Tracker_Template__c).
+            // IsActive filter added 2026-08-04 (Chris): only active products should be selectable.
             for(Product2 p : [
                 SELECT Name, Task_Tracker_Template__c
                 FROM Product2
                 WHERE Task_Tracker_Template__c != null
+                  AND IsActive = true
                 ORDER BY Name ASC
             ]) {
                 init.productOptions.add(new PicklistOption(p.Name, p.Task_Tracker_Template__c));
@@ -128,6 +130,184 @@ public without sharing class NextStepControllerLWC {
             throw new AuraHandledException(e.getMessage());
         }
     }
+
+    /**
+    * @description No-scoping ("Quick") Next Step — STEP 1 of 2: create the
+    *   Opportunity shell only. The LWC then calls addProductToNextStepQuick()
+    *   once per selected product.
+    *
+    *   WHY THE SPLIT (do not "optimise" this back into one call):
+    *   Building two product trees in a SINGLE transaction blows the org's
+    *   process-builder/flow limit. Verified in jt-full4 2026-09-14 — the
+    *   second template fails with:
+    *     CANNOT_EXECUTE_FLOW_TRIGGER ... "Product Processes" ->
+    *     "Opportunity: Closed Won" -> LIMIT_EXCEEDED "XD Facts Populate Fields"
+    *   Each template works fine in its own transaction. This is exactly why
+    *   the SCOPED flow calls createTaskTrackerForNextSteps once per round-trip
+    *   — that design was load-bearing, not incidental.
+    *
+    *   All-or-nothing is therefore achieved by COMPENSATION, not a savepoint
+    *   (a savepoint cannot span transactions): if any product fails, the LWC
+    *   calls abortNextStepQuick() to delete the whole Opportunity.
+    *
+    * @author Dex | 2026-09-14
+    * @param matterId    AcctSeed__Project__c Id
+    * @param stepName    Opportunity Name
+    * @param areaOfLaw   Opportunity Area_of_Law__c
+    * @return Id of the created Opportunity
+    **/
+    @AuraEnabled
+    public static Id createNextStepQuick(Id matterId, String stepName, String areaOfLaw) {
+        try {
+            return createNextStepOpportunityFromMatter(matterId, stepName, areaOfLaw);
+        } catch (Exception e) {
+            System.debug('***createNextStepQuick Exception = ' + e.getMessage() +
+                         '\n' + e.getStackTraceString());
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    /**
+    * @description No-scoping ("Quick") Next Step — STEP 2 of 2, called ONCE
+    *   PER SELECTED PRODUCT, each in its own transaction. Creates the
+    *   OpportunityLineItem + the full Case/Task/Event tree at template default
+    *   hours, then reprices pro rata (ratio == 1.0 since nothing is dropped,
+    *   so UnitPrice lands on ListPrice).
+    *
+    *   Staff adjust afterwards on the Opportunity via the existing
+    *   "Price Override" and "View/Edit Hours" buttons. This deliberately does
+    *   NOT short-circuit tree creation: EditNextStepOpportunityController
+    *   throws 'No cases were found to edit hours.' against a bare Opportunity.
+    *
+    * @author Dex | 2026-09-14
+    * @param matterId   AcctSeed__Project__c Id
+    * @param oppId      Opportunity created by createNextStepQuick()
+    * @param templateId one selected Task_Tracker_Template__c Id
+    **/
+    @AuraEnabled
+    public static void addProductToNextStepQuick(String matterId, String oppId, String templateId) {
+        Savepoint sp = Database.setSavepoint();
+        try {
+            Map<String, Decimal> stepHours = collectAllStepHours(templateId);
+
+            if(stepHours.isEmpty()) {
+                throw new NextStepQuickException(
+                    'This product has no template steps, so no tasks could be ' +
+                    'created. Template Id: ' + templateId);
+            }
+
+            createTaskTrackerForNextSteps(
+                matterId,
+                oppId,
+                templateId,
+                JSON.serialize(stepHours),
+                new List<String>(stepHours.keySet())
+            );
+        } catch (Exception e) {
+            // Undo this product's partial work within its own transaction.
+            // Cross-product cleanup is the LWC's job via abortNextStepQuick().
+            Database.rollback(sp);
+            System.debug('***addProductToNextStepQuick Exception = ' + e.getMessage() +
+                         '\n' + e.getStackTraceString());
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    /**
+    * @description Compensating rollback for the Quick flow. Deletes an
+    *   in-progress Next Step Opportunity and everything built under it, so a
+    *   failure partway through a multi-product run leaves nothing behind.
+    *
+    *   Guarded: refuses to delete anything that is not a Next Step record type,
+    *   so a bad Id from the client can never nuke a real Opportunity.
+    *   Best-effort by design — never throws, because it runs inside the LWC's
+    *   error handler and must not mask the ORIGINAL failure.
+    *
+    * @author Dex | 2026-09-14
+    * @param oppId Opportunity to unwind
+    **/
+    @AuraEnabled
+    public static void abortNextStepQuick(String oppId) {
+        try {
+            if(String.isBlank(oppId)) { return; }
+
+            List<Opportunity> opps = [
+                SELECT Id, RecordType.Name
+                FROM Opportunity
+                WHERE Id = :oppId
+            ];
+            if(opps.isEmpty()) { return; }
+
+            // Safety rail: only ever unwind a Next Step.
+            if(opps[0].RecordType.Name == null ||
+               !opps[0].RecordType.Name.equalsIgnoreCase('Next Step')) {
+                System.debug('abortNextStepQuick refused: not a Next Step opp ' + oppId);
+                return;
+            }
+
+            // Tasks/Events hang off the Cases; delete children first.
+            List<Case> cases = [SELECT Id FROM Case WHERE Opportunity__c = :oppId];
+            if(!cases.isEmpty()) {
+                Set<Id> caseIds = new Map<Id, Case>(cases).keySet();
+                List<Task> tasks = [SELECT Id FROM Task WHERE WhatId IN :caseIds];
+                if(!tasks.isEmpty()) { delete tasks; }
+                List<Event> events = [SELECT Id FROM Event WHERE WhatId IN :caseIds];
+                if(!events.isEmpty()) { delete events; }
+                delete cases;
+            }
+
+            List<OpportunityLineItem> items =
+                [SELECT Id FROM OpportunityLineItem WHERE OpportunityId = :oppId];
+            if(!items.isEmpty()) { delete items; }
+
+            delete opps;
+
+        } catch (Exception e) {
+            // Swallow: the caller is already reporting the real error.
+            System.debug('***abortNextStepQuick cleanup failed (non-fatal) = ' +
+                         e.getMessage() + '\n' + e.getStackTraceString());
+        }
+    }
+
+    /**
+    * @description Builds the complete stepId -> hours map for every
+    *   Task_Tracker_Template_Step__c under a top-level template, using each
+    *   step's own Hours__c as the default. Used by the no-scoping ("Quick")
+    *   flow, where staff accept template defaults instead of hand-scoping.
+    *
+    *   NOTE: CreateProcessFlowController filters its step query with
+    *   `WHERE Id = :mapTasksToHours.keySet()`, so this map doubles as the
+    *   task SELECTION set. Any step omitted here is never created -- the
+    *   `t.Hours__c` fallback further down that class never fires, because the
+    *   row has already been filtered out of the query.
+    *
+    * @author Dex | 2026-09-14
+    * @param topLevelTemplateId Task_Tracker_Template__c Id (the product's template)
+    * @return Map<String, Decimal> every step Id -> its template Hours__c (null -> 0)
+    **/
+    private static Map<String, Decimal> collectAllStepHours(String topLevelTemplateId) {
+        Map<String, Decimal> stepHours = new Map<String, Decimal>();
+
+        // Every template in the tree shares Top_Level_Task_Template__c with the
+        // selected template -- same predicate calculateOpportunityProRata uses.
+        Task_Tracker_Template__c root = [
+            SELECT Id, Top_Level_Task_Template__c
+            FROM Task_Tracker_Template__c
+            WHERE Id = :topLevelTemplateId
+        ];
+
+        for(Task_Tracker_Template_Step__c s : [
+            SELECT Id, Hours__c
+            FROM Task_Tracker_Template_Step__c
+            WHERE Task_Tracker_Template__r.Top_Level_Task_Template__c = :root.Top_Level_Task_Template__c
+        ]) {
+            stepHours.put(s.Id, s.Hours__c == null ? 0 : s.Hours__c);
+        }
+
+        return stepHours;
+    }
+
+    public class NextStepQuickException extends Exception {}
 
     /**
     * @description Gets Opportunity Information for Opp

@@ -3,7 +3,11 @@
 /// transcript pipeline into Zoom_Integration_Error__c so failures are visible without having
 /// to dig through debug logs. Insert is isolated in its own try/catch so a logging failure
 /// (e.g. DML limit already exhausted) never masks or replaces the original error.
-public with sharing class ZoomIntegrationErrorLogger {
+///
+/// without sharing: also called from ZoomPhoneWebhookHandler's guest-user REST context, which has
+/// no sharing-rule visibility by default - logging a failure shouldn't depend on the calling
+/// user's record access.
+public without sharing class ZoomIntegrationErrorLogger {
 
     public static void log(String className, String methodName, String zoomUserId, String zoomMeetingId, Exception e) {
         log(className, methodName, zoomUserId, zoomMeetingId, e, null, null);
@@ -32,6 +36,19 @@ public with sharing class ZoomIntegrationErrorLogger {
         logRecord.Stack_Trace__c = e.getStackTraceString();
 
         if (recordingId != null && RETRYABLE_ERROR_TYPES.contains(logRecord.Error_Type__c)) {
+            // Skip creating a second pending retry for the same recording/call - this happens
+            // when Zoom redelivers the same webhook event (or, with polling also running, both
+            // paths hit the same failure independently). The existing record's own retry cycle
+            // already covers it; a duplicate here would just inflate the count of "stuck" records
+            // without representing a second distinct problem.
+            if (zoomMeetingId != null && ![
+                SELECT Id FROM Zoom_Integration_Error__c
+                WHERE Resolved__c = false AND Recording_Id__c = :recordingId AND Zoom_Meeting_Id__c = :zoomMeetingId
+                LIMIT 1
+            ].isEmpty()) {
+                return;
+            }
+
             logRecord.Recording_Id__c = recordingId;
             logRecord.Voice_Call_Id__c = voiceCallId;
             logRecord.Retry_Count__c = 0;

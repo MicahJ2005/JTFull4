@@ -20,15 +20,26 @@
  * The client is identified by lookup, not by name search -- Client_Name__c is a
  * formula over Account.PersonContact, so Opportunity.AccountId *is* the client.
  *
- * The reviewer (via the Conflict_Check Screen Flow) always has the final say on
- * Conflict_Check_Status__c. This class only RECOMMENDS a default:
+ * ESTATE PLANNING is handled differently, per the firm: those intakes have no
+ * opposing party by nature, so the whole opposing-party side is SKIPPED (even on
+ * the ~700 of 3,504 that do carry a value) and a blank field no longer holds the
+ * check open. They pass unless the client themselves turns up as an opposing
+ * party. In exchange they get a third check that only runs for them:
+ *   3) OPPOSING PARTY ON OUR MATTERS -- is the client a Related_People__c of class
+ *      "Opposing Party" on one of our matters? Active is coloured red, closed
+ *      amber. This is the Matters half of the Dan / Sally / Heather case.
+ *
+ * The reviewer always has the final say on Conflict_Check_Status__c. This class
+ * only RECOMMENDS a default:
  *   - nothing found                      -> Pass
  *   - opposing party on an active matter -> Fail
  *   - client on an ACTIVE prosecution    -> Fail
  *   - anything else found                -> Not Done Yet (human must decide)
  *
- * Per the firm, check (2) never recommends Fail on its own -- it matches against
- * free text, so a human confirms every hit.
+ * Per the firm, checks (2) and (3) never recommend Fail on their own. For (2) the
+ * reason is that it matches free text. For (3) it was a deliberate call -- an
+ * active adverse matter reviews rather than fails, because "either way she will
+ * have to review" -- so it is red in the findings but Not Done Yet in status.
  *
  * NOTE: there is intentionally no "Match Found - Review" status in this org.
  * The picklist is Not Done Yet / Pass / Fail, so uncertain matches recommend
@@ -45,6 +56,23 @@ public with sharing class ConflictCheckService {
     @TestVisible private static final Set<String> ACTIVE_MATTER_STATUSES = new Set<String>{
         'Active', 'On hold', 'Conversion',
         'Pending Close', 'Pending Close - Open AR Only', 'Pending Close - Refund Review'
+    };
+
+    // Areas of law where the firm does not expect an opposing party at all, so a
+    // blank/placeholder Opposing Party's Full Name must NOT hold the check open.
+    // Compared case-insensitively against Opportunity.Area_of_Law__c.
+    @TestVisible private static final Set<String> NO_OPPOSING_PARTY_AREAS = new Set<String>{
+        'estate planning'
+    };
+
+    // Placeholders that people type into the opposing-party field instead of a
+    // name. Compared against the whole normalized value (norm() strips spaces and
+    // punctuation, so "N/A" and "N / A" both arrive as "na"). Without this, "NA"
+    // prefix-matches real accounts ("Nancy", "Nathan") at 88% and manufactures
+    // conflicts out of nothing.
+    @TestVisible private static final Set<String> NAME_PLACEHOLDERS = new Set<String>{
+        'na', 'n', 'no', 'none', 'nil', 'tbd', 'tba', 'unknown', 'unk',
+        'notavailable', 'notapplicable', 'nonapplicable', 'pending', 'notyetknown'
     };
 
     // Honorifics / professional titles / generational suffixes to strip from a
@@ -155,25 +183,41 @@ public with sharing class ConflictCheckService {
         // Runs first and unconditionally: neither client check depends on the
         // opposing-party name, so a blank opposing name must NOT suppress them.
         ClientSide cs = new ClientSide();
+        // Estate Planning intakes have no opposing party by nature, so for them the
+        // whole opposing-party side is skipped and the client-side checks decide the
+        // outcome on their own. Every other area of law is untouched by this.
+        Boolean isEstatePlanning = expectsNoOpposingParty(opp.Area_of_Law__c);
+        res.opposingPartyExpected = !isEstatePlanning;
+
         cs.parties = buildClientParties(opp);
-        checkClientProsecution(cs);
+        checkClientMatterLinks(cs, isEstatePlanning);
         checkClientNamedAsOpposing(cs, oppId);
 
         res.clientNames                = String.join(cs.names(), ', ');
         res.clientProsecution          = cs.prosAny;
         res.clientProsecutionActive    = cs.prosActive;
         res.clientNamedAsOpposing      = cs.advAny;
-        res.clientNamedAsOpposingCount = cs.advCount;
+        res.clientNamedAsOpposingCount   = cs.advCount;
+        res.clientOpposingOnMatter       = cs.advMatterAny;
+        res.clientOpposingOnActiveMatter = cs.advMatterActive;
 
         // ---- OPPOSING side ---------------------------------------------------
-        // Only names that yield a searchable token count. A value like "N/A" parses
-        // to a name but produces no token long enough to search, so it would run
-        // zero searches and find nothing -- which must NOT be reported as a Pass.
+        // Only names we can actually act on count. A value like "N/A" parses to a
+        // name but yields no searchable token, and "NA" / "Not Available" are
+        // searchable but meaningless -- either way zero real searches run, which
+        // must NOT be reported as a Pass.
+        // For Estate Planning we do not search at all -- per the firm, "we will not
+        // have an opposing party so it shouldn't check for those on estate plans."
+        // ~700 of the 3,504 estate-planning Opportunities do carry a value, and it
+        // is ignored deliberately.
         List<String> parsedNames = new List<String>();
-        for (String nm : parseNames(opp.Opposing_Party_s_Full_Name__c)) {
-            if (isSearchable(nm)) parsedNames.add(nm);
+        if (!isEstatePlanning) {
+            for (String nm : parseNames(opp.Opposing_Party_s_Full_Name__c)) {
+                if (isUsableName(nm)) parsedNames.add(nm);
+            }
         }
         Boolean opposingSearchRan = !parsedNames.isEmpty();
+        Boolean opposingRequired  = !isEstatePlanning;
 
         Map<Id, MatchRow> byAccount = new Map<Id, MatchRow>();
         Boolean anyActiveMatter = false;
@@ -215,18 +259,26 @@ public with sharing class ConflictCheckService {
         // search did not run, so there is nothing to clear. Per the firm, the
         // client-named-as-opposing-party check never escalates past Not Done Yet:
         // it matches against free text, so a human confirms every hit.
+        // Fail is reserved for the two hard conflicts: the opposing party is a party
+        // on an active matter of ours, or we are actively prosecuting the client.
+        // Being the opposing party on our active matter is deliberately NOT a Fail
+        // (the firm's call -- "either way she will have to review"); it reviews, and
+        // is coloured red in the findings so the severity is still obvious.
         if (anyActiveMatter || cs.prosActive) {
             res.recommendedStatus = STATUS_FAIL;
-        } else if (!opposingSearchRan || res.matchCount > 0 || cs.prosAny || cs.advAny) {
+        } else if ((opposingRequired && !opposingSearchRan)
+                   || res.matchCount > 0
+                   || cs.prosAny
+                   || cs.anyAdverse()) {
             res.recommendedStatus = STATUS_NOT_DONE;
         } else {
             res.recommendedStatus = STATUS_PASS;
         }
 
         // ---- narratives ------------------------------------------------------
-        res.summaryHtml   = buildHtml(opp, parsedNames, res, cs, opposingSearchRan);
-        res.plainNotes    = buildPlain(opp, parsedNames, res, cs, opposingSearchRan);
-        res.notesSummary  = buildNotesSummary(parsedNames, res, cs, opposingSearchRan);
+        res.summaryHtml   = buildHtml(opp, parsedNames, res, cs, opposingSearchRan, opposingRequired);
+        res.plainNotes    = buildPlain(opp, parsedNames, res, cs, opposingSearchRan, opposingRequired);
+        res.notesSummary  = buildNotesSummary(parsedNames, res, cs, opposingSearchRan, opposingRequired);
         return res;
     }
 
@@ -237,7 +289,7 @@ public with sharing class ConflictCheckService {
         if (oppId == null) return null;
         List<Opportunity> opps = [
             SELECT Id, Name, Opposing_Party_s_Full_Name__c, Client_Name__c,
-                   Client_2_First_Name__c, Conflict_Check_Status__c,
+                   Client_2_First_Name__c, Conflict_Check_Status__c, Area_of_Law__c,
                    AccountId, Account.Name, Account.FirstName, Account.LastName,
                    Spouse__c, Spouse__r.Name, Spouse__r.FirstName, Spouse__r.LastName
             FROM Opportunity
@@ -415,28 +467,51 @@ public with sharing class ConflictCheckService {
      * An ACTIVE one is a hard conflict; a closed one still goes to the reviewer,
      * who confirms status with the team before clearing it.
      *
-     * Related_People_Class__c is deliberately NOT filtered: a handful of rows on
-     * these matters have a null or non-"Opposing Party" class, and dropping them
-     * would silently hide a real link.
+     * On the PROSECUTION bucket, Related_People_Class__c is deliberately NOT
+     * filtered: a handful of rows on those matters have a null or
+     * non-"Opposing Party" class, and dropping them would hide a real link.
+     *
+     * -------------------------------------------------------------------------
+     * The same query also answers a second question: is the client an OPPOSING
+     * PARTY on one of our matters? (the Matters half of the Dan / Sally / Heather
+     * case -- the Opportunity half lives in checkClientNamedAsOpposing.) An
+     * ACTIVE such matter means we currently act against this person for another
+     * client; a closed one is a former-client judgement call.
+     *
+     * Both buckets come from ONE query so a client who is an opposing party on a
+     * prosecution matter is reported once, under prosecution, rather than twice.
      */
-    private static void checkClientProsecution(ClientSide cs) {
+    private static void checkClientMatterLinks(ClientSide cs, Boolean includeOpposingRole) {
         if (cs.parties.isEmpty()) return;
 
         Set<Id> clientAccIds = cs.accountIds();
-        List<Related_People__c> rps = [
-            SELECT Id, Person_Account_Name__c, Related_People_Class__c,
-                   Matter_Name__c, Matter_Name__r.Name, Matter_Name__r.AcctSeed__Status__c
-            FROM Related_People__c
-            WHERE Person_Account_Name__c IN :clientAccIds
-              AND Matter_Name__r.Name LIKE '%rosecut%'
-            ORDER BY Matter_Name__r.AcctSeed__Status__c
-            LIMIT 200
-        ];
+        // Two query shapes on purpose. Outside Estate Planning the adverse-matter
+        // bucket is not wanted, so we keep the original prosecution-only query and
+        // non-estate-planning behaviour stays byte-identical.
+        List<Related_People__c> rps = includeOpposingRole
+            ? [SELECT Id, Person_Account_Name__c, Related_People_Class__c,
+                      Matter_Name__c, Matter_Name__r.Name, Matter_Name__r.AcctSeed__Status__c,
+                      Matter_Name__r.AcctSeed__Account__r.Name
+               FROM Related_People__c
+               WHERE Person_Account_Name__c IN :clientAccIds
+                 AND (Matter_Name__r.Name LIKE '%rosecut%'
+                      OR Related_People_Class__c = 'Opposing Party')
+               ORDER BY Matter_Name__r.AcctSeed__Status__c
+               LIMIT 500]
+            : [SELECT Id, Person_Account_Name__c, Related_People_Class__c,
+                      Matter_Name__c, Matter_Name__r.Name, Matter_Name__r.AcctSeed__Status__c,
+                      Matter_Name__r.AcctSeed__Account__r.Name
+               FROM Related_People__c
+               WHERE Person_Account_Name__c IN :clientAccIds
+                 AND Matter_Name__r.Name LIKE '%rosecut%'
+               ORDER BY Matter_Name__r.AcctSeed__Status__c
+               LIMIT 500];
         if (rps.isEmpty()) return;
 
-        cs.prosAny = true;
-        List<String> html  = new List<String>();
-        List<String> plain = new List<String>();
+        List<String> prosHtml  = new List<String>();
+        List<String> prosPlain = new List<String>();
+        List<String> advHtml   = new List<String>();
+        List<String> advPlain  = new List<String>();
 
         for (Related_People__c rp : rps) {
             String mName = (rp.Matter_Name__r != null) ? safe(rp.Matter_Name__r.Name) : '';
@@ -444,28 +519,62 @@ public with sharing class ConflictCheckService {
             Boolean act  = ACTIVE_MATTER_STATUSES.contains(mStat);
             String who   = cs.nameFor(rp.Person_Account_Name__c);
             String cls   = safe(rp.Related_People_Class__c);
-            cs.prosActive = cs.prosActive || act;
+            String statusTag = act ? 'ACTIVE' : mStat;
+            String ourClient = (rp.Matter_Name__r != null && rp.Matter_Name__r.AcctSeed__Account__r != null)
+                             ? safe(rp.Matter_Name__r.AcctSeed__Account__r.Name) : '';
 
-            html.add('<li>' + esc(who) + ' on <a href="' + recordUrl(rp.Matter_Name__c) + '" target="_blank">'
-                     + esc(mName) + '</a> '
-                     + '<span style="color:' + (act ? '#c23934' : '#706e6b') + ';font-weight:bold;">['
-                     + esc(act ? 'ACTIVE' : mStat) + ']</span>'
-                     + (String.isNotBlank(cls) ? ' <i>as ' + esc(cls) + '</i>' : '') + '</li>');
-            plain.add('   - ' + who + ' on prosecution matter ' + mName
-                      + ' [' + (act ? 'ACTIVE' : mStat) + ']'
-                      + (String.isNotBlank(cls) ? ' as ' + cls : '') + ' ' + recordUrl(rp.Matter_Name__c));
+            if (mName.toLowerCase().contains('rosecut')) {
+                cs.prosAny    = true;
+                cs.prosActive = cs.prosActive || act;
+                prosHtml.add('<li>' + esc(who) + ' on <a href="' + recordUrl(rp.Matter_Name__c) + '" target="_blank">'
+                         + esc(mName) + '</a> '
+                         + '<span style="color:' + (act ? '#c23934' : '#706e6b') + ';font-weight:bold;">['
+                         + esc(statusTag) + ']</span>'
+                         + (String.isNotBlank(cls) ? ' <i>as ' + esc(cls) + '</i>' : '') + '</li>');
+                prosPlain.add('   - ' + who + ' on prosecution matter ' + mName
+                          + ' [' + statusTag + ']'
+                          + (String.isNotBlank(cls) ? ' as ' + cls : '') + ' ' + recordUrl(rp.Matter_Name__c));
+            } else if (includeOpposingRole) {
+                cs.advMatterAny    = true;
+                cs.advMatterActive = cs.advMatterActive || act;
+                cs.advMatterCount++;
+                advHtml.add('<li>' + esc(who) + ' is the opposing party on <a href="' + recordUrl(rp.Matter_Name__c)
+                         + '" target="_blank">' + esc(mName) + '</a> '
+                         + '<span style="color:' + (act ? '#c23934' : '#706e6b') + ';font-weight:bold;">['
+                         + esc(statusTag) + ']</span>'
+                         + (String.isNotBlank(ourClient) ? '<br/><span style="font-size:0.9em;">our client was <b>'
+                              + esc(ourClient) + '</b></span>' : '') + '</li>');
+                advPlain.add('   - ' + who + ' is the opposing party on matter ' + mName + ' [' + statusTag + ']'
+                          + (String.isNotBlank(ourClient) ? '; our client was ' + ourClient : '')
+                          + ' ' + recordUrl(rp.Matter_Name__c));
+            }
         }
 
-        String color = cs.prosActive ? '#c23934' : '#dd7a01';
-        String lead  = cs.prosActive
-            ? 'The firm is CURRENTLY prosecuting this potential client. We cannot be hired by someone we are prosecuting.'
-            : 'This potential client is a related person on a closed prosecution matter. Confirm the matter really is closed with the team before clearing.';
+        if (cs.prosAny) {
+            String color = cs.prosActive ? '#c23934' : '#dd7a01';
+            String lead  = cs.prosActive
+                ? 'The firm is CURRENTLY prosecuting this potential client. We cannot be hired by someone we are prosecuting.'
+                : 'This potential client is a related person on a closed prosecution matter. Confirm the matter really is closed with the team before clearing.';
+            cs.prosHtml = '<div style="background:#fef1ee;border:1px solid ' + color + ';padding:6px 10px;margin:6px 0;">'
+                + '<b style="color:' + color + ';">&#9888; PROSECUTION FLAG &ndash; POTENTIAL CLIENT</b>'
+                + '<div style="margin-top:2px;">' + esc(lead) + '</div>'
+                + '<ul style="margin:4px 0 4px 16px;">' + String.join(prosHtml, '') + '</ul></div>';
+            cs.prosPlain = '** PROSECUTION FLAG - POTENTIAL CLIENT: ' + lead + '\n' + String.join(prosPlain, '\n');
+        }
 
-        cs.prosHtml = '<div style="background:#fef1ee;border:1px solid ' + color + ';padding:6px 10px;margin:6px 0;">'
-            + '<b style="color:' + color + ';">&#9888; PROSECUTION FLAG &ndash; POTENTIAL CLIENT</b>'
-            + '<div style="margin-top:2px;">' + esc(lead) + '</div>'
-            + '<ul style="margin:4px 0 4px 16px;">' + String.join(html, '') + '</ul></div>';
-        cs.prosPlain = '** PROSECUTION FLAG - POTENTIAL CLIENT: ' + lead + '\n' + String.join(plain, '\n');
+        if (cs.advMatterAny) {
+            String color = cs.advMatterActive ? '#c23934' : '#dd7a01';
+            String lead  = cs.advMatterActive
+                ? 'We CURRENTLY act against this potential client on an active matter. Taking them on would put us on both sides.'
+                : 'This potential client is the opposing party on a closed matter of ours. Confirm we can act for them now.';
+            cs.advMatterHtml = '<div style="background:#fef1ee;border:1px solid ' + color + ';padding:6px 10px;margin:6px 0;">'
+                + '<b style="color:' + color + ';">&#9888; CLIENT IS AN OPPOSING PARTY ON OUR MATTER'
+                + (cs.advMatterActive ? ' &ndash; ACTIVE' : '') + '</b>'
+                + '<div style="margin-top:2px;">' + esc(lead) + '</div>'
+                + '<ul style="margin:4px 0 4px 16px;">' + String.join(advHtml, '') + '</ul></div>';
+            cs.advMatterPlain = '** CLIENT IS AN OPPOSING PARTY ON OUR MATTER'
+                + (cs.advMatterActive ? ' - ACTIVE' : '') + ': ' + lead + '\n' + String.join(advPlain, '\n');
+        }
     }
 
     /**
@@ -640,6 +749,12 @@ public with sharing class ConflictCheckService {
         public Integer advCount = 0;
         public String advHtml   = '';
         public String advPlain  = '';
+        // the opposing party on one of our MATTERS (Related_People__c)
+        public Boolean advMatterAny    = false;
+        public Boolean advMatterActive = false;
+        public Integer advMatterCount  = 0;
+        public String advMatterHtml    = '';
+        public String advMatterPlain   = '';
 
         public Set<Id> accountIds() {
             Set<Id> ids = new Set<Id>();
@@ -659,7 +774,9 @@ public with sharing class ConflictCheckService {
             }
             return '';
         }
-        public Boolean anyFinding() { return prosAny || advAny; }
+        public Boolean anyFinding()  { return prosAny || advAny || advMatterAny; }
+        /** Any client-side link that says we are, or were, against this person. */
+        public Boolean anyAdverse()  { return advAny || advMatterAny; }
     }
 
     private static void addMatter(Map<Id, List<AcctSeed__Project__c>> byAcct, Id accId, AcctSeed__Project__c m) {
@@ -756,6 +873,24 @@ public with sharing class ConflictCheckService {
             if (t.replaceAll('[^\\p{L}]', '').length() >= 2) return true;
         }
         return false;
+    }
+
+    /**
+     * A name we can act on: searchable AND not one of the placeholders people type
+     * in place of a name. "N/A" is unsearchable anyway, but "NA" and "Not Available"
+     * are not -- and "NA" prefix-matches Nancy/Nathan at 88%.
+     */
+    @TestVisible
+    private static Boolean isUsableName(String name) {
+        if (!isSearchable(name)) return false;
+        return !NAME_PLACEHOLDERS.contains(norm(name));
+    }
+
+    /** True when this area of law is not expected to have an opposing party at all. */
+    @TestVisible
+    private static Boolean expectsNoOpposingParty(String areaOfLaw) {
+        if (String.isBlank(areaOfLaw)) return false;
+        return NO_OPPOSING_PARTY_AREAS.contains(areaOfLaw.trim().toLowerCase());
     }
 
     /** A single token as a prefix wildcard (e.g. "Veronica" -> "Veronica*"). */
@@ -871,7 +1006,8 @@ public with sharing class ConflictCheckService {
     //  Narrative builders
     // =================================================================
     private static String buildHtml(Opportunity opp, List<String> parsed, Result res,
-                                   ClientSide cs, Boolean opposingSearchRan) {
+                                   ClientSide cs, Boolean opposingSearchRan,
+                                   Boolean opposingRequired) {
         String color; String headline;
         if (res.recommendedStatus == STATUS_PASS) {
             color = '#2e844a'; headline = 'No conflicts found – recommended: PASS';
@@ -881,20 +1017,30 @@ public with sharing class ConflictCheckService {
                 ? 'We are prosecuting this potential client – recommended: FAIL'
                 : 'Active-matter conflict found – recommended: FAIL';
         } else {
-            color = '#dd7a01'; headline = res.matchCount + ' potential match(es) – review required';
+            color = '#dd7a01';
+            // Don't say "0 potential match(es)" when the finding is on the client
+            // side or no opposing search ran -- it reads as a contradiction.
+            headline = res.matchCount > 0
+                ? res.matchCount + ' potential match(es) – review required'
+                : 'Review required';
         }
         if (cs.prosAny) {
             color = '#c23934';
             headline = '⚠ PROSECUTION FLAG – ' + headline;
-        } else if (cs.advAny) {
+        } else if (cs.advMatterActive) {
+            color = '#c23934';
+            headline = '⚠ WE CURRENTLY ACT AGAINST THIS CLIENT – ' + headline;
+        } else if (cs.anyAdverse()) {
             color = '#dd7a01';
             headline = '⚠ CLIENT IS AN OPPOSING PARTY ELSEWHERE – ' + headline;
         }
 
         String h = '<p style="font-size:1.1em;"><b style="color:' + color + ';">' + esc(headline) + '</b></p>';
         h += '<p><b>Client:</b> ' + esc(safe(opp.Client_Name__c)) + '<br/>'
+           + '<b>Area of law:</b> ' + esc(safe(opp.Area_of_Law__c)) + '<br/>'
            + '<b>Searched opposing party name(s):</b> '
-           + (opposingSearchRan ? esc(String.join(parsed, ', ')) : '<i>none entered</i>') + '</p>';
+           + (opposingSearchRan ? esc(String.join(parsed, ', '))
+                : (opposingRequired ? '<i>none entered</i>' : '<i>not applicable for this area of law</i>')) + '</p>';
 
         // ---- potential client -------------------------------------------------
         h += '<h3 style="margin:10px 0 2px;font-size:1em;">Potential client</h3>';
@@ -913,13 +1059,26 @@ public with sharing class ConflictCheckService {
             } else {
                 h += '<div style="color:#706e6b;font-size:0.9em;">Not named as the opposing party on any other opportunity.</div>';
             }
+            if (!opposingRequired) {
+                if (cs.advMatterAny) {
+                    h += cs.advMatterHtml;
+                } else {
+                    h += '<div style="color:#706e6b;font-size:0.9em;">Not the opposing party on any matter of ours.</div>';
+                }
+            }
         }
 
         // ---- opposing party ---------------------------------------------------
         h += '<h3 style="margin:10px 0 2px;font-size:1em;">Opposing party</h3>';
+        if (!opposingRequired) {
+            h += '<div style="color:#706e6b;font-size:0.9em;">'
+               + esc(safe(opp.Area_of_Law__c)) + ' intakes do not have an opposing party, so no opposing-party search was run. '
+               + 'This does not hold the check open &ndash; the potential-client checks above decide the outcome.</div>';
+            return wrap(h);
+        }
         if (!opposingSearchRan) {
             h += '<p><b style="color:#dd7a01;">The opposing-party search could not be completed.</b></p>'
-               + '<p>No usable opposing-party name was entered on this Opportunity &ndash; the "Opposing Party\'s Full Name" field is blank, or holds a placeholder rather than a name (e.g. "N/A", a title on its own, or bare initials). No search was run, so <b>this is not a clean result</b>. Enter the opposing party\'s name and run the check again.</p>';
+               + '<p>No usable opposing-party name was entered on this Opportunity &ndash; the "Opposing Party\'s Full Name" field is blank, or holds a placeholder rather than a name (e.g. "N/A", "NA", a title on its own, or bare initials). No search was run, so <b>this is not a clean result</b>. Enter the opposing party\'s name and run the check again.</p>';
             return wrap(h);
         }
         if (res.matchCount == 0) {
@@ -949,7 +1108,8 @@ public with sharing class ConflictCheckService {
     }
 
     private static String buildPlain(Opportunity opp, List<String> parsed, Result res,
-                                    ClientSide cs, Boolean opposingSearchRan) {
+                                    ClientSide cs, Boolean opposingSearchRan,
+                                    Boolean opposingRequired) {
         List<String> lines = new List<String>();
         lines.add('CONFLICT CHECK – recommended: ' + res.recommendedStatus);
         lines.add('Client: ' + safe(opp.Client_Name__c));
@@ -963,9 +1123,17 @@ public with sharing class ConflictCheckService {
             lines.add('   Checked: ' + String.join(cs.names(), ', '));
             lines.add(cs.prosAny ? cs.prosPlain : '   Not a related person on any prosecution matter.');
             lines.add(cs.advAny  ? cs.advPlain  : '   Not named as the opposing party on any other opportunity.');
+            if (!opposingRequired) {
+                lines.add(cs.advMatterAny ? cs.advMatterPlain
+                                          : '   Not the opposing party on any matter of ours.');
+            }
         }
         lines.add('');
         lines.add('OPPOSING PARTY:');
+        if (!opposingRequired) {
+            lines.add('   ' + safe(opp.Area_of_Law__c) + ' intakes do not have an opposing party, so no search was run. This does not hold the check open.');
+            return String.join(lines, '\n');
+        }
         if (!opposingSearchRan) {
             lines.add('   The opposing-party search could not be completed: no usable opposing-party name was entered (blank, or a placeholder such as "N/A"). No search was run - this is NOT a clean result.');
             return String.join(lines, '\n');
@@ -987,18 +1155,25 @@ public with sharing class ConflictCheckService {
 
     /** Concise determination note capped at 255 chars for Conflict_Determination_Notes__c. */
     private static String buildNotesSummary(List<String> parsed, Result res,
-                                           ClientSide cs, Boolean opposingSearchRan) {
+                                           ClientSide cs, Boolean opposingSearchRan,
+                                           Boolean opposingRequired) {
         String s = 'Conflict check (' + res.recommendedStatus + '): ';
         // Client-side findings lead -- prosecution is the hard conflict.
         if (cs.prosAny) {
             s += (cs.prosActive ? '[ACTIVE PROSECUTION - CLIENT]' : '[PROSECUTION - CLIENT, closed]') + ' ';
         }
+        if (cs.advMatterAny) {
+            s += '[CLIENT IS OPPOSING PARTY ON ' + cs.advMatterCount + ' MATTER(S)'
+               + (cs.advMatterActive ? ', 1+ ACTIVE' : ', all closed') + '] ';
+        }
         if (cs.advAny) {
             s += '[CLIENT IS OPPOSING PARTY ON ' + cs.advCount + ' OTHER OPP(S)'
                + (cs.advOpen ? ', 1+ OPEN' : '') + '] ';
         }
-        if (!opposingSearchRan) {
-            s += 'opposing-party search not run – no opposing-party name entered.';
+        if (!opposingRequired) {
+            s += 'no opposing-party search - not applicable for this area of law.';
+        } else if (!opposingSearchRan) {
+            s += 'opposing-party search not run – no usable opposing-party name entered.';
         } else if (res.matchCount == 0) {
             s += 'no opposing-party match for "' + String.join(parsed, ', ') + '".';
         } else {
@@ -1079,6 +1254,12 @@ public with sharing class ConflictCheckService {
         public Boolean clientNamedAsOpposing;
         @InvocableVariable(label='Other Opportunities Naming the Client as Opposing Party')
         public Integer clientNamedAsOpposingCount;
+        @InvocableVariable(label='Client is Opposing Party on One of Our Matters')
+        public Boolean clientOpposingOnMatter;
+        @InvocableVariable(label='Client is Opposing Party on an ACTIVE Matter')
+        public Boolean clientOpposingOnActiveMatter;
+        @InvocableVariable(label='An Opposing Party is Expected for this Area of Law')
+        public Boolean opposingPartyExpected;
     }
 
     public class MatchRow {

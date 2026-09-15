@@ -534,4 +534,48 @@ private class MatterTaskTrackerControllerTest {
         System.assertEquals('Path to Settlement', bundle.workflows[1].name, 'Path to Settlement should sort second');
         System.assertNotEquals(null, bundle.workflows[0].createdDate, 'createdDate must be populated on WorkflowDTO');
     }
+    /***************************************************************************************
+     * ALL ROWS was added to the Task and Event queries so archived activities are counted.
+     * ALL ROWS also returns recycle-bin records, which is why each query is paired with
+     * IsDeleted = false. Without that guard a deleted task would reappear in the tracker.
+     *
+     * The archiving half of ALL ROWS cannot be unit tested - a Task only archives once it is
+     * closed AND its due date is over 365 days old, and test data cannot be aged. This covers
+     * the half that can be tested.
+     ***************************************************************************************/
+    @IsTest
+    static void testDeletedTaskIsExcluded() {
+        AcctSeed__Project__c matter = [
+            SELECT Id FROM AcctSeed__Project__c WHERE Name = 'Test Matter' LIMIT 1
+        ];
+
+        Task doomed = [SELECT Id FROM Task WHERE Subject = 'Ad Hoc Task' LIMIT 1];
+
+        // Precondition: the task must be visible first, otherwise its absence proves nothing.
+        MatterTaskTrackerController.WorkflowBundle before =
+            MatterTaskTrackerController.getWorkflowsForMatter(matter.Id);
+        System.assertEquals(true, containsTask(before, 'Ad Hoc Task'),
+            'Precondition: the task must be visible before it is deleted.');
+
+        Test.startTest();
+        delete doomed;
+        MatterTaskTrackerController.WorkflowBundle afterDelete =
+            MatterTaskTrackerController.getWorkflowsForMatter(matter.Id);
+        Test.stopTest();
+
+        System.assertEquals(false, containsTask(afterDelete, 'Ad Hoc Task'),
+            'A deleted task must not appear in the tracker. ALL ROWS returns recycle-bin rows, so '
+            + 'IsDeleted = false is what keeps them out.');
+    }
+
+    private static Boolean containsTask(MatterTaskTrackerController.WorkflowBundle bundle, String taskName) {
+        for (MatterTaskTrackerController.WorkflowDTO wf : bundle.workflows) {
+            for (MatterTaskTrackerController.PhaseDTO ph : wf.phases) {
+                for (MatterTaskTrackerController.TaskDTO td : ph.tasks) {
+                    if (td.name == taskName) { return true; }
+                }
+            }
+        }
+        return false;
+    }
 }

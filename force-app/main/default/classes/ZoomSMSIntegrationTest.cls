@@ -31,6 +31,19 @@ private class ZoomSMSIntegrationTest {
     }
 
     @isTest
+    static void testRemovePhoneNumberFormatHandlesAlreadyPrefixedNumbers() {
+        // A 10-digit number gets the country code prepended, same as before.
+        System.assertEquals('16128670420', ZoomSMSIntegration.removePhoneNumberFormat('(612) 867-0420'));
+
+        // A number already stored with the country code baked in (e.g. "1-6128670420", as seen on
+        // a real Account record) used to get a second "1" prepended on top of the correct 11-digit
+        // result, producing a 12-digit key that could never match a real lookup value.
+        System.assertEquals('16128670420', ZoomSMSIntegration.removePhoneNumberFormat('1-6128670420'));
+
+        System.assertEquals(null, ZoomSMSIntegration.removePhoneNumberFormat(null));
+    }
+
+    @isTest
     static void testFormatPhoneNumber() {
         String formatted = ZoomSMSIntegration.formatPhoneNumber(null);
         System.assertEquals(null, formatted); // Already in format
