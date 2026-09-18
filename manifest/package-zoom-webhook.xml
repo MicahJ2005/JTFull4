@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>ZoomPhoneIntegration</members>
+        <members>ZoomPhoneIntegrationTest</members>
+        <members>ZoomIntegrationErrorLogger</members>
+        <members>ZoomIntegrationErrorLoggerTest</members>
+        <members>ZoomPhoneWebhookHandler</members>
+        <members>ZoomPhoneWebhookHandlerTest</members>
+        <members>ZoomPhoneWebhookQueueable</members>
+        <members>ZoomPhoneRecordingWebhookQueueable</members>
+        <members>ZoomPhoneTranscriptRetryQueueable</members>
+        <members>ZoomPhoneVoiceCallRetryQueueable</members>
+        <members>ZoomPhoneTranscriptRetrySchedulable</members>
+        <members>ZoomPhoneTranscriptRetrySchedulableTest</members>
+        <members>ZoomPhoneTranscriptBuildQueueable</members>
+        <members>ZoomSMSIntegration</members>
+        <members>ZoomSMSIntegrationTest</members>
+        <members>ZoomMeetingTranscriptService</members>
+        <members>ZoomMeetingTranscriptServiceTest</members>
+        <name>ApexClass</name>
+    </types>
+    <types>
+        <members>Zoom_Integration_Error__c.Recording_Id__c</members>
+        <members>Zoom_Integration_Error__c.Voice_Call_Id__c</members>
+        <members>Zoom_Integration_Error__c.Next_Retry_At__c</members>
+        <members>Zoom_Integration_Error__c.Retry_Count__c</members>
+        <members>Zoom_Integration_Error__c.Resolved__c</members>
+        <members>Zoom_Integration_Error__c.Raw_Payload__c</members>
+        <members>Zoom_Integration_Error__c.Error_Type__c</members>
+        <members>ZoomConfig__mdt.Webhook_Secret_Token__c</members>
+        <members>ZoomConfig__mdt.SMS_Client_Id__c</members>
+        <members>ZoomConfig__mdt.SMS_Client_Secret__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>63.0</version>
+</Package>

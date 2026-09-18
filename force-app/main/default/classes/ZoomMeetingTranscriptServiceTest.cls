@@ -44,12 +44,16 @@ private class ZoomMeetingTranscriptServiceTest {
 
     @isTest
     static void testExecute() {
-        // Set up test data
+        // Set up test data - username/alias include a timestamp so this doesn't collide with a
+        // hardcoded value already used elsewhere (Salesforce usernames must be globally unique
+        // across every org, not just this one - a hardcoded username here would fail in any org
+        // where that exact string was already taken, e.g. production).
+        String ts = String.valueOf(Datetime.now().getTime());
         User u = new User(
-            Username = 'testuser911@example.com',
+            Username = 'testuser911' + ts + '@example.com',
             Email = 'testuser911@example.com',
             LastName = 'Test911',
-            Alias = 'tuser911',
+            Alias = 'tu9' + ts.substring(ts.length() - 5),
             TimeZoneSidKey = 'America/Los_Angeles',
             LocaleSidKey = 'en_US',
             EmailEncodingKey = 'UTF-8',
@@ -83,11 +87,12 @@ private class ZoomMeetingTranscriptServiceTest {
         // so it could never actually match and the same transcript would be re-fetched on every
         // overlapping run. This proves a transcript already imported for a given meeting_id is
         // now correctly skipped.
+        String ts912 = String.valueOf(Datetime.now().getTime());
         User u = new User(
-            Username = 'testuser912@example.com',
+            Username = 'testuser912' + ts912 + '@example.com',
             Email = 'testuser912@example.com',
             LastName = 'Test912',
-            Alias = 'tuser912',
+            Alias = 'tu9' + ts912.substring(ts912.length() - 5),
             TimeZoneSidKey = 'America/Los_Angeles',
             LocaleSidKey = 'en_US',
             EmailEncodingKey = 'UTF-8',
@@ -142,11 +147,12 @@ private class ZoomMeetingTranscriptServiceTest {
         Account acc = new Account(LastName = 'ZoomAcct', PersonEmail = 'participant@example.com', RecordTypeId = Schema.SObjectType.Account.getRecordTypeInfosByName().get('Person Account').getRecordTypeId());
         insert acc;
 
+        String ts3333 = String.valueOf(Datetime.now().getTime());
         User user = new User(
-            Username = 'user3333xxxxx@example.com',
+            Username = 'user3333xxxxx' + ts3333 + '@example.com',
             Email = 'participantx@example.com',
             LastName = 'ZoomUx',
-            Alias = 'zo333x',
+            Alias = 'zo' + ts3333.substring(ts3333.length() - 6),
             TimeZoneSidKey = 'America/Los_Angeles',
             LocaleSidKey = 'en_US',
             EmailEncodingKey = 'UTF-8',
